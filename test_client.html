@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>OmniVoice Local Reader</title>
+
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 220px;
+            font-size: 18px;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        button {
+            font-size: 16px;
+            padding: 10px 20px;
+            margin-top: 10px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            cursor: default;
+            opacity: 0.5;
+        }
+
+        .control {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        }
+
+        .control-row {
+            margin: 10px 0;
+        }
+
+        .control-row label {
+            display: inline-block;
+            width: 120px;
+            font-size: 16px;
+        }
+
+        #speedValue,
+        #volumeValue {
+            display: inline-block;
+            min-width: 60px;
+            font-weight: bold;
+        }
+
+        input[type="range"] {
+            width: 300px;
+            vertical-align: middle;
+            margin: 0 10px;
+        }
+
+        input[type="number"],
+        input[type="text"] {
+            width: 160px;
+            font-size: 16px;
+            padding: 4px 6px;
+        }
+
+        #status {
+            margin-top: 20px;
+            white-space: pre-wrap;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            line-height: 1.6;
+        }
+
+        #sentences {
+            margin-top: 20px;
+        }
+
+        .sentence {
+            padding: 8px 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            background: #f0f0f0;
+        }
+
+        .sentence.current {
+            font-weight: bold;
+            background: #dbeafe;
+        }
+
+        .sentence.done {
+            background: #dcfce7;
+        }
+
+        .sentence.generating {
+            background: #fef3c7;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>OmniVoice Local Reader</h1>
+
+    <textarea id="textInput">こんにちは。
+これは複数文を読み上げるテストです。
+OmniVoiceを使って、一文ずつ音声を生成します。
+生成された音声は順番に再生されます。</textarea>
+
+
+    <!-- --------------------------------------------------------------------------------
+         音声操作
+         -------------------------------------------------------------------------------- -->
+
+    <div class="control">
+
+        <div class="control-row">
+
+            <label for="speedRange">
+                読み上げ速度：
+            </label>
+
+            <input
+                type="range"
+                id="speedRange"
+                min="0.5"
+                max="2.0"
+                step="0.05"
+                value="1.0"
+            >
+
+            <span id="speedValue">
+                1.00x
+            </span>
+
+        </div>
+
+
+        <div class="control-row">
+
+            <label for="volumeRange">
+                音量：
+            </label>
+
+            <input
+                type="range"
+                id="volumeRange"
+                min="0"
+                max="100"
+                step="1"
+                value="100"
+            >
+
+            <span id="volumeValue">
+                100%
+            </span>
+
+        </div>
+
+    </div>
+
+
+    <div class="control">
+
+        <div class="control-row">
+            <label for="instructInput">instruct：</label>
+            <input
+                type="text"
+                id="instructInput"
+                placeholder="空なら未指定"
+            >
+        </div>
+
+        <div class="control-row">
+            <label for="numStepInput">num_step：</label>
+            <input
+                type="number"
+                id="numStepInput"
+                min="1"
+                step="1"
+                value="32"
+            >
+        </div>
+
+        <div class="control-row">
+            <label for="guidanceScaleInput">guidance_scale：</label>
+            <input
+                type="number"
+                id="guidanceScaleInput"
+                min="0"
+                step="0.1"
+                value="2.0"
+            >
+        </div>
+
+        <div class="control-row">
+            <label for="tShiftInput">t_shift：</label>
+            <input
+                type="number"
+                id="tShiftInput"
+                min="0"
+                step="0.01"
+                value="0.1"
+            >
+        </div>
+
+        <div class="control-row">
+            <label for="positionTemperatureInput">position_temperature：</label>
+            <input
+                type="number"
+                id="positionTemperatureInput"
+                min="0"
+                step="0.1"
+                value="5.0"
+            >
+        </div>
+
+        <div class="control-row">
+            <label for="classTemperatureInput">class_temperature：</label>
+            <input
+                type="number"
+                id="classTemperatureInput"
+                min="0"
+                step="0.1"
+                value="0.0"
+            >
+        </div>
+
+        <div class="control-row">
+            <label for="denoiseInput">denoise：</label>
+            <input
+                type="checkbox"
+                id="denoiseInput"
+                checked
+            >
+        </div>
+
+    </div>
+
+
+    <!-- --------------------------------------------------------------------------------
+         ボタン
+         -------------------------------------------------------------------------------- -->
+
+    <div>
+
+        <button
+            id="speakButton"
+            onclick="startReading()"
+        >
+            読み上げ開始
+        </button>
+
+        <button
+            id="stopButton"
+            onclick="stopReading()"
+            disabled
+        >
+            停止
+        </button>
+
+    </div>
+
+
+    <!-- --------------------------------------------------------------------------------
+         状態
+         -------------------------------------------------------------------------------- -->
+
+    <div id="status">
+        待機中
+    </div>
+
+
+    <!-- --------------------------------------------------------------------------------
+         文一覧
+         -------------------------------------------------------------------------------- -->
+
+    <div id="sentences"></div>
+
+
+<script>
+
+// ================================================================================
+// test_client.html
+//
+// ローカル TTS サーバーへ文単位でリクエストし、先読み再生するテスト UI。
+// ================================================================================
+
+const SERVER_URL =
+    "http://127.0.0.1:8000";
+
+
+const textInput =
+    document.getElementById("textInput");
+
+const speakButton =
+    document.getElementById("speakButton");
+
+const stopButton =
+    document.getElementById("stopButton");
+
+const statusElement =
+    document.getElementById("status");
+
+const speedRange =
+    document.getElementById("speedRange");
+
+const speedValue =
+    document.getElementById("speedValue");
+
+const volumeRange =
+    document.getElementById("volumeRange");
+
+const volumeValue =
+    document.getElementById("volumeValue");
+
+
+// 状態
+
+let stopped = false;
+
+let currentAudio = null;
+
+let currentAbortController = null;
+
+let readingSession = 0;
+
+
+// 速度の操作
+
+speedRange.addEventListener("input", () => {
+
+    const speed =
+        Number(speedRange.value);
+
+    speedValue.textContent =
+        speed.toFixed(2) + "x";
+
+
+    if (currentAudio) {
+
+        currentAudio.playbackRate =
+            speed;
+    }
+});
+
+
+// 音量の操作
+
+volumeRange.addEventListener("input", () => {
+
+    const volume =
+        Number(volumeRange.value);
+
+    volumeValue.textContent =
+        volume + "%";
+
+
+    if (currentAudio) {
+
+        currentAudio.volume =
+            volume / 100;
+    }
+});
+
+
+// ================================================================================
+// splitSentences
+// 句点・感嘆符・疑問符でテキストを文単位に分割する。
+// ================================================================================
+function splitSentences(text) {
+    const maxLength = 120;
+    const source = String(text || "")
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+        .replace(/\u2028|\u2029/g, "\n")
+        .trim();
+
+    if (!source) {
+        return [];
+    }
+
+    function splitByLength(sentence) {
+        const chunks = [];
+
+        for (let index = 0; index < sentence.length; index += maxLength) {
+            chunks.push(sentence.slice(index, index + maxLength));
+        }
+
+        return chunks;
+    }
+
+    function splitLongSentence(sentence) {
+        if (sentence.length <= maxLength) {
+            return [sentence];
+        }
+
+        const pieces = sentence
+            .split(/(?<=[、，,；;：:])/)
+            .map(piece => piece.trim())
+            .filter(piece => piece.length > 0);
+
+        if (pieces.length <= 1) {
+            return splitByLength(sentence);
+        }
+
+        const merged = [];
+        let buffer = "";
+
+        for (const piece of pieces) {
+            if (!buffer) {
+                buffer = piece;
+                continue;
+            }
+
+            if ((buffer + piece).length <= maxLength) {
+                buffer += piece;
+                continue;
+            }
+
+            merged.push(buffer);
+            buffer = piece;
+        }
+
+        if (buffer) {
+            merged.push(buffer);
+        }
+
+        return merged.flatMap(item => {
+            if (item.length <= maxLength) {
+                return [item];
+            }
+
+            return splitByLength(item);
+        });
+    }
+
+    return source
+        .split(/\n+/)
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .flatMap(line => line
+            .split(/(?<=[。．！？!?])/)
+            .map(part => part.trim())
+            .filter(part => part.length > 0)
+        )
+        .flatMap(splitLongSentence);
+}
+
+
+// ================================================================================
+// displaySentences
+// 分割した文の一覧を画面に表示する。
+// ================================================================================
+function displaySentences(sentences) {
+
+    const container =
+        document.getElementById("sentences");
+
+    container.innerHTML = "";
+
+
+    sentences.forEach((sentence, index) => {
+
+        const div =
+            document.createElement("div");
+
+        div.className =
+            "sentence";
+
+        div.id =
+            "sentence-" + index;
+
+        div.textContent =
+            (index + 1) +
+            ". " +
+            sentence;
+
+        container.appendChild(div);
+    });
+}
+
+
+// ================================================================================
+// resetSentenceStates
+// 文一覧のハイライト状態を初期化する。
+// ================================================================================
+function resetSentenceStates() {
+
+    const elements =
+        document.querySelectorAll(".sentence");
+
+    elements.forEach(element => {
+
+        element.classList.remove(
+            "current",
+            "done",
+            "generating"
+        );
+    });
+}
+
+
+// ================================================================================
+// setCurrentSentence
+// 再生中の文を強調表示する。
+// ================================================================================
+function setCurrentSentence(index) {
+
+    const elements =
+        document.querySelectorAll(".sentence");
+
+
+    elements.forEach((element, i) => {
+
+        element.classList.remove(
+            "current"
+        );
+
+
+        if (i < index) {
+
+            element.classList.add(
+                "done"
+            );
+        }
+    });
+
+
+    const current =
+        document.getElementById(
+            "sentence-" + index
+        );
+
+
+    if (current) {
+
+        current.classList.add(
+            "current"
+        );
+    }
+}
+
+
+// ================================================================================
+// setGeneratingSentence
+// TTS 生成中の文を強調表示する。
+// ================================================================================
+function setGeneratingSentence(index) {
+
+    const element =
+        document.getElementById(
+            "sentence-" + index
+        );
+
+
+    if (element) {
+
+        element.classList.add(
+            "generating"
+        );
+    }
+}
+
+
+// ================================================================================
+// clearGeneratingSentence
+// 指定文の生成中表示を解除する。
+// ================================================================================
+function clearGeneratingSentence(index) {
+
+    const element =
+        document.getElementById(
+            "sentence-" + index
+        );
+
+
+    if (element) {
+
+        element.classList.remove(
+            "generating"
+        );
+    }
+}
+
+
+// ================================================================================
+// buildTtsRequest
+// /tts に送る本文と、任意の生成オプションを組み立てる。
+// ================================================================================
+function buildTtsRequest(text) {
+    const instruct = document.getElementById("instructInput").value.trim();
+    const numStep = Number(document.getElementById("numStepInput").value);
+    const guidanceScale = Number(document.getElementById("guidanceScaleInput").value);
+    const tShift = Number(document.getElementById("tShiftInput").value);
+    const positionTemperature = Number(
+        document.getElementById("positionTemperatureInput").value
+    );
+    const classTemperature = Number(
+        document.getElementById("classTemperatureInput").value
+    );
+
+    const body = {
+        text: text,
+        denoise: document.getElementById("denoiseInput").checked
+    };
+
+    if (instruct) {
+        body.instruct = instruct;
+    }
+
+    if (Number.isFinite(numStep)) {
+        body.num_step = numStep;
+    }
+
+    if (Number.isFinite(guidanceScale)) {
+        body.guidance_scale = guidanceScale;
+    }
+
+    if (Number.isFinite(tShift)) {
+        body.t_shift = tShift;
+    }
+
+    if (Number.isFinite(positionTemperature)) {
+        body.position_temperature = positionTemperature;
+    }
+
+    if (Number.isFinite(classTemperature)) {
+        body.class_temperature = classTemperature;
+    }
+
+    return body;
+}
+
+// ================================================================================
+// generateAudio
+// 1文の音声をローカル TTS サーバーから取得する。
+// ================================================================================
+async function generateAudio(
+    text,
+    sessionId
+) {
+
+    const controller =
+        new AbortController();
+
+
+    currentAbortController =
+        controller;
+
+
+    try {
+
+        const response =
+            await fetch(
+                SERVER_URL + "/tts",
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body: JSON.stringify(
+                        buildTtsRequest(text)
+                    ),
+
+                    signal:
+                        controller.signal
+                }
+            );
+
+
+        if (!response.ok) {
+
+            let message =
+                "TTS request failed";
+
+
+            try {
+
+                const errorData =
+                    await response.json();
+
+
+                if (errorData.detail) {
+
+                    message =
+                        errorData.detail;
+                }
+
+            } catch (e) {
+            }
+
+
+            throw new Error(message);
+        }
+
+
+        const blob =
+            await response.blob();
+
+
+        // 古い読み上げセッションの結果は無視する。
+
+        if (
+            sessionId !== readingSession ||
+            stopped
+        ) {
+
+            return null;
+        }
+
+
+        return blob;
+
+    } finally {
+
+        if (
+            currentAbortController ===
+            controller
+        ) {
+
+            currentAbortController =
+                null;
+        }
+    }
+}
+
+
+// ================================================================================
+// playAudio
+// 生成済み音声 blob を再生する。
+// ================================================================================
+function playAudio(blob) {
+
+    return new Promise((resolve, reject) => {
+
+        if (
+            stopped ||
+            !blob
+        ) {
+
+            resolve();
+
+            return;
+        }
+
+
+        const url =
+            URL.createObjectURL(blob);
+
+
+        const audio =
+            new Audio(url);
+
+
+        currentAudio =
+            audio;
+
+
+        // 現在の設定を反映する
+
+        audio.playbackRate =
+            Number(speedRange.value);
+
+        audio.volume =
+            Number(volumeRange.value) / 100;
+
+
+        // 後始末
+
+        // ================================================================================
+        // cleanup
+        // 再生終了後の URL 解放と、currentAudio のクリアを行う。
+        // ================================================================================
+        function cleanup() {
+
+            URL.revokeObjectURL(url);
+
+            if (
+                currentAudio ===
+                audio
+            ) {
+
+                currentAudio =
+                    null;
+            }
+        }
+
+
+        // 再生が終了した
+
+        audio.onended = () => {
+
+            cleanup();
+
+            resolve();
+        };
+
+
+        // 再生エラー
+
+        audio.onerror = () => {
+
+            cleanup();
+
+            reject(
+                new Error(
+                    "Audio playback failed"
+                )
+            );
+        };
+
+
+        // 再生を開始する
+
+        audio.play().catch(error => {
+
+            cleanup();
+
+            reject(error);
+        });
+
+    });
+}
+
+
+// ================================================================================
+// startReading
+// 入力テキストを文単位で読み上げる。再生中に次文を先読みする。
+// ================================================================================
+async function startReading() {
+
+    const text =
+        textInput.value.trim();
+
+
+    if (!text) {
+
+        alert(
+            "読み上げる文章を入力してください。"
+        );
+
+        return;
+    }
+
+
+    const sentences =
+        splitSentences(text);
+
+
+    if (sentences.length === 0) {
+
+        alert(
+            "読み上げる文章がありません。"
+        );
+
+        return;
+    }
+
+
+    // 新しい読み上げセッション
+
+    readingSession++;
+
+    const sessionId =
+        readingSession;
+
+
+    stopped = false;
+
+
+    displaySentences(
+        sentences
+    );
+
+    resetSentenceStates();
+
+
+    speakButton.disabled =
+        true;
+
+    stopButton.disabled =
+        false;
+
+
+    try {
+
+        // 最初の文を生成する
+
+        setGeneratingSentence(0);
+
+
+        statusElement.textContent =
+            "生成中: 1 / " +
+            sentences.length +
+            "\n\n" +
+            sentences[0];
+
+
+        let nextAudioPromise =
+            generateAudio(
+                sentences[0],
+                sessionId
+            );
+
+
+        // 再生のメインループ
+
+        for (
+            let i = 0;
+            i < sentences.length;
+            i++
+        ) {
+
+            if (
+                stopped ||
+                sessionId !== readingSession
+            ) {
+
+                break;
+            }
+
+
+            // 現在の音声を待つ
+
+            statusElement.textContent =
+                "音声準備中: " +
+                (i + 1) +
+                " / " +
+                sentences.length +
+                "\n\n" +
+                sentences[i];
+
+
+            const blob =
+                await nextAudioPromise;
+
+
+            if (
+                stopped ||
+                sessionId !== readingSession
+            ) {
+
+                break;
+            }
+
+
+            clearGeneratingSentence(i);
+
+
+            // 次の文の生成を開始する
+            //
+            // ここで次文を先読みする。
+            // 文 i の再生中に、
+            // GPU で文 i+1 を生成する。
+
+            if (
+                i + 1 <
+                sentences.length
+            ) {
+
+                setGeneratingSentence(
+                    i + 1
+                );
+
+
+                statusElement.textContent =
+                    "再生中: " +
+                    (i + 1) +
+                    " / " +
+                    sentences.length +
+                    "\n\n" +
+                    sentences[i] +
+                    "\n\n" +
+                    "次の文を生成中: " +
+                    (i + 2) +
+                    " / " +
+                    sentences.length;
+
+
+                nextAudioPromise =
+                    generateAudio(
+                        sentences[i + 1],
+                        sessionId
+                    );
+
+            } else {
+
+                statusElement.textContent =
+                    "再生中: " +
+                    (i + 1) +
+                    " / " +
+                    sentences.length +
+                    "\n\n" +
+                    sentences[i];
+            }
+
+
+            // 現在の文をマークする
+
+            setCurrentSentence(i);
+
+
+            // 現在の文を再生する
+
+            await playAudio(blob);
+        }
+
+
+        // 完了 / 停止
+
+        if (
+            stopped ||
+            sessionId !== readingSession
+        ) {
+
+            statusElement.textContent =
+                "読み上げを停止しました。";
+
+        } else {
+
+            statusElement.textContent =
+                "すべての読み上げが完了しました。\n\n" +
+                sentences.length +
+                "文";
+        }
+
+
+    } catch (error) {
+
+        // 停止ボタンでは中断が想定される。
+
+        if (
+            error.name ===
+            "AbortError"
+        ) {
+
+            if (stopped) {
+
+                statusElement.textContent =
+                    "読み上げを停止しました。";
+            }
+
+            return;
+        }
+
+
+        console.error(error);
+
+
+        statusElement.textContent =
+            "エラーが発生しました。\n\n" +
+            error.message;
+
+
+    } finally {
+
+        currentAudio =
+            null;
+
+
+        currentAbortController =
+            null;
+
+
+        speakButton.disabled =
+            false;
+
+        stopButton.disabled =
+            true;
+    }
+}
+
+
+// ================================================================================
+// stopReading
+// 読み上げと TTS リクエストを停止する。
+// ================================================================================
+function stopReading() {
+
+    stopped = true;
+
+
+    // 現在の読み上げセッションを無効にする。
+
+    readingSession++;
+
+
+    // 現在の音声を停止する
+
+    if (currentAudio) {
+
+        currentAudio.pause();
+
+        currentAudio.currentTime =
+            0;
+
+        currentAudio =
+            null;
+    }
+
+
+    // 現在の HTTP リクエストを中断する
+
+    if (currentAbortController) {
+
+        currentAbortController.abort();
+
+        currentAbortController =
+            null;
+    }
+
+
+    statusElement.textContent =
+        "読み上げを停止しました。";
+
+
+    speakButton.disabled =
+        false;
+
+    stopButton.disabled =
+        true;
+
+
+    // 文の強調表示をリセットする
+
+    const elements =
+        document.querySelectorAll(
+            ".sentence"
+        );
+
+
+    elements.forEach(element => {
+
+        element.classList.remove(
+            "current",
+            "generating"
+        );
+    });
+}
+
+// ================================================================================
+
+</script>
+
+</body>
+</html>
