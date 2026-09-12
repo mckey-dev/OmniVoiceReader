@@ -1,0 +1,11 @@
+{
+  "playbackSpeed": 0.9,
+  "playbackVolume": 0.5,
+  "instruct": "",
+  "num_step": 8,
+  "guidance_scale": 2.0,
+  "t_shift": 0.1,
+  "position_temperature": 5.0,
+  "class_temperature": 0.0,
+  "denoise": true
+}

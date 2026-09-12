@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>OmniVoice Web Reader</title>
+
+  <style>
+    body {
+      width: 320px;
+      padding: 16px;
+      font-family: sans-serif;
+    }
+
+    h1 {
+      font-size: 18px;
+      margin-top: 0;
+    }
+
+    button {
+      padding: 9px 12px;
+      cursor: pointer;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: #f5f5f5;
+    }
+
+    button:hover {
+      background: #e8e8e8;
+    }
+
+    .main-button {
+      width: 100%;
+      margin-top: 8px;
+    }
+
+    .control-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .control-row button {
+      flex: 1;
+    }
+
+    .setting {
+      margin-top: 16px;
+    }
+
+    .setting-label {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+    }
+
+    .generation-grid {
+      display: grid;
+      grid-template-columns: 1fr 88px;
+      gap: 8px 8px;
+      align-items: center;
+    }
+
+    .generation-grid label {
+      font-size: 12px;
+    }
+
+    .generation-grid input[type="number"],
+    .generation-grid input[type="text"] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 4px 6px;
+    }
+
+    .generation-instruct {
+      grid-column: 1 / -1;
+    }
+
+    .generation-instruct input {
+      margin-top: 4px;
+    }
+
+    .generation-check {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+    }
+
+    #status {
+      margin-top: 12px;
+      font-size: 13px;
+      white-space: pre-wrap;
+    }
+
+    #progress {
+      margin-top: 8px;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    #currentSentence {
+      margin-top: 8px;
+      padding: 8px;
+      max-height: 100px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 13px;
+      line-height: 1.5;
+      background: #f5f5f5;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+    }
+
+    #result {
+      margin-top: 12px;
+      max-height: 180px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12px;
+      background: #f5f5f5;
+      padding: 8px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>OmniVoice Web Reader</h1>
+
+  <button
+    id="extractButton"
+    class="main-button">
+    本文を抽出
+  </button>
+
+  <button
+    id="readButton"
+    class="main-button">
+    このページを読み上げる
+  </button>
+
+  <button
+    id="readSelectionButton"
+    class="main-button">
+    選択範囲を読み上げる
+  </button>
+
+  <div id="progress">
+    0 / 0 文
+  </div>
+
+  <div id="currentSentence">
+    現在の文章はありません
+  </div>
+
+  <div class="control-row">
+
+    <button id="pauseButton">
+      ⏸ 一時停止
+    </button>
+
+    <button id="resumeButton">
+      ▶ 再開
+    </button>
+
+    <button id="stopButton">
+      ■ 停止
+    </button>
+
+  </div>
+
+  <div class="setting">
+
+    <div class="setting-label">
+      <span>速度</span>
+      <span id="speedValue">1.00x</span>
+    </div>
+
+    <input
+      id="speedRange"
+      type="range"
+      min="0.5"
+      max="2"
+      step="0.05"
+      value="1">
+
+  </div>
+
+  <div class="setting">
+
+    <div class="setting-label">
+      <span>音量</span>
+      <span id="volumeValue">100%</span>
+    </div>
+
+    <input
+      id="volumeRange"
+      type="range"
+      min="0"
+      max="100"
+      step="1"
+      value="100">
+
+  </div>
+
+  <div class="setting">
+    <div class="setting-label">
+      <span>生成設定</span>
+    </div>
+
+    <div class="generation-grid">
+      <label class="generation-instruct" for="instructInput">
+        instruct
+        <input
+          id="instructInput"
+          type="text"
+          placeholder="空なら未指定">
+      </label>
+
+      <label for="numStepInput">num_step</label>
+      <input
+        id="numStepInput"
+        type="number"
+        min="1"
+        step="1"
+        value="32">
+
+      <label for="guidanceScaleInput">guidance_scale</label>
+      <input
+        id="guidanceScaleInput"
+        type="number"
+        min="0"
+        step="0.1"
+        value="2.0">
+
+      <label for="tShiftInput">t_shift</label>
+      <input
+        id="tShiftInput"
+        type="number"
+        min="0"
+        step="0.01"
+        value="0.1">
+
+      <label for="positionTemperatureInput">position_temperature</label>
+      <input
+        id="positionTemperatureInput"
+        type="number"
+        min="0"
+        step="0.1"
+        value="5.0">
+
+      <label for="classTemperatureInput">class_temperature</label>
+      <input
+        id="classTemperatureInput"
+        type="number"
+        min="0"
+        step="0.1"
+        value="0.0">
+
+      <label class="generation-check" for="denoiseInput">
+        <input
+          id="denoiseInput"
+          type="checkbox"
+          checked>
+        denoise
+      </label>
+    </div>
+  </div>
+
+  <div id="status">
+    待機中
+  </div>
+
+  <pre id="result"></pre>
+
+  <script src="popup.js"></script>
+
+</body>
+</html>
