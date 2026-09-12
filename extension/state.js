@@ -44,6 +44,7 @@ export const state = {
     positionTemperature: 5.0,
     classTemperature: 0.0,
     denoise: true,
+    language: "auto",
 
     // TTS リクエストの管理
     activeControllers: new Set()

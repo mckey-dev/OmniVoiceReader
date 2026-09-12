@@ -25,6 +25,9 @@ const tShiftInput = document.getElementById("tShiftInput");
 const positionTemperatureInput = document.getElementById("positionTemperatureInput");
 const classTemperatureInput = document.getElementById("classTemperatureInput");
 const denoiseInput = document.getElementById("denoiseInput");
+const languageInput = document.getElementById("languageInput");
+const languageFilter = document.getElementById("languageFilter");
+let languageCatalog = null;
 
 // ================================================================================
 // getCurrentTab
@@ -189,6 +192,10 @@ function applyGenerationOptions(options) {
     if (typeof options.denoise === "boolean") {
         denoiseInput.checked = options.denoise;
     }
+
+    if (typeof options.language === "string" && options.language) {
+        renderLanguageChoices(options.language);
+    }
 }
 
 // ================================================================================
@@ -203,7 +210,8 @@ function collectGenerationOptions() {
         t_shift: Number(tShiftInput.value),
         position_temperature: Number(positionTemperatureInput.value),
         class_temperature: Number(classTemperatureInput.value),
-        denoise: denoiseInput.checked
+        denoise: denoiseInput.checked,
+        language: languageInput.value
     };
 }
 
@@ -256,6 +264,8 @@ async function sendGenerationOptions() {
 // ポップアップを開いたとき、進行中の読み上げ状態を復元する。
 // ================================================================================
 async function restorePlaybackState() {
+    await setupLanguageSelect();
+
     try {
         const settingsResponse = await sendCommand("reloadSettings");
         applySettingsToForm(settingsResponse && settingsResponse.settings);
@@ -463,6 +473,7 @@ volumeRange.addEventListener("input", async () => {
 // ================================================================================
 [
     instructInput,
+    languageInput,
     numStepInput,
     guidanceScaleInput,
     tShiftInput,
@@ -476,6 +487,42 @@ volumeRange.addEventListener("input", async () => {
 
 denoiseInput.addEventListener("change", () => {
     sendGenerationOptions();
+});
+
+// ================================================================================
+// renderLanguageChoices
+// 現在の検索語で language の選択肢を描く。
+// ================================================================================
+function renderLanguageChoices(selectedValue) {
+    if (!languageCatalog) {
+        return;
+    }
+
+    fillLanguageSelect(
+        languageInput,
+        languageCatalog,
+        selectedValue || languageInput.value || "auto",
+        languageFilter.value
+    );
+}
+
+// ================================================================================
+// setupLanguageSelect
+// OmniVoice の言語一覧を読み、検索できるようにする。
+// ================================================================================
+async function setupLanguageSelect() {
+    try {
+        languageCatalog = await loadLanguageCatalog(
+            chrome.runtime.getURL("languages.json")
+        );
+        renderLanguageChoices(languageInput.value || "auto");
+    } catch (error) {
+        console.warn("Failed to load language catalog:", error);
+    }
+}
+
+languageFilter.addEventListener("input", () => {
+    renderLanguageChoices(languageInput.value);
 });
 
 // ================================================================================

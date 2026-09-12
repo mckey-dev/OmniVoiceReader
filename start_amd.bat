@@ -42,7 +42,8 @@ echo 注意: torch の +rocm 版は通常の PyPI だけでは入らないこと
 if errorlevel 1 goto REQ_FAIL
 
 :HAVE_VENV
-if not exist "sample.wav" goto NO_SAMPLE
+"%PYTHON_EXE%" -c "from sample_audio import ensure_sample_wav; ensure_sample_wav()"
+if errorlevel 1 goto NO_SAMPLE
 if exist "voice_clone_prompt.pt" goto START_SERVER
 echo voice_clone_prompt.pt が無いため、参照音声から作成します...
 "%PYTHON_EXE%" test_voice_prompt_save_load.py
@@ -50,13 +51,13 @@ if errorlevel 1 goto PROMPT_FAIL
 goto START_SERVER
 
 :NO_SAMPLE
-echo sample.wav が見つかりません。
-echo sample.wav を置いてから再実行してください。
+echo 参照音声の準備に失敗しました。
+echo sample.wav / sample.mp3 / sample.ogg などを置いてから再実行してください。
 exit /b 1
 
 :NO_PROMPT
 echo voice_clone_prompt.pt が見つかりません。
-echo sample.wav を置いてから再実行してください。
+echo sample.wav / sample.mp3 / sample.ogg などを置いてから再実行してください。
 exit /b 1
 
 :PROMPT_FAIL

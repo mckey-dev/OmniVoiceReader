@@ -1,12 +1,13 @@
 # ================================================================================
 # sample_text.py
 #
-# 参照音声 sample.wav から、書き起こし sample.txt を用意する。
+# 参照音声から、書き起こし sample.txt を用意する。
 # ================================================================================
 
 import os
 
 from model_store import ensure_whisper_model
+from sample_audio import load_mono
 
 
 # ================================================================================
@@ -23,7 +24,7 @@ def _read_existing_text(txt_path):
 
 # ================================================================================
 # ensure_sample_text
-# sample.txt があればそれを返す。無ければ sample.wav を書き起こして保存する。
+# sample.txt があればそれを返す。無ければ参照音声を書き起こして保存する。
 # ================================================================================
 def ensure_sample_text(model, wav_path, txt_path):
     text = _read_existing_text(txt_path)
@@ -43,7 +44,8 @@ def ensure_sample_text(model, wav_path, txt_path):
     print(f"ASR model path: {asr_dir}")
 
     model.load_asr_model(model_name=asr_dir)
-    text = model.transcribe(wav_path).strip()
+    waveform, sample_rate = load_mono(wav_path)
+    text = model.transcribe((waveform, sample_rate)).strip()
 
     if not text:
         raise ValueError(

@@ -23,6 +23,9 @@ else
     exit 1
 fi
 
+echo "NVIDIA ドライバを確認しています..."
+"${PY}" gpu_runtime.py
+
 if [ ! -x "${PYTHON_EXE}" ]; then
     echo "仮想環境を作成しています: ${VENV_DIR}"
     "${PY}" -m venv "${VENV_DIR}"
@@ -39,9 +42,9 @@ if [ ! -x "${PYTHON_EXE}" ]; then
     fi
 fi
 
-if [ ! -f "sample.wav" ]; then
-    echo "sample.wav が見つかりません。"
-    echo "sample.wav を置いてから再実行してください。"
+if ! "${PYTHON_EXE}" -c "from sample_audio import ensure_sample_wav; ensure_sample_wav()"; then
+    echo "参照音声の準備に失敗しました。"
+    echo "sample.wav / sample.mp3 / sample.ogg などを置いてから再実行してください。"
     exit 1
 fi
 

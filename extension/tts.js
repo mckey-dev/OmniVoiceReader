@@ -23,7 +23,8 @@ function buildTtsRequest(text) {
         t_shift: state.tShift,
         position_temperature: state.positionTemperature,
         class_temperature: state.classTemperature,
-        denoise: Boolean(state.denoise)
+        denoise: Boolean(state.denoise),
+        language: state.language || "auto"
     };
 
     if (instruct) {
@@ -62,6 +63,7 @@ export async function generateAudio(text, sessionId) {
             sessionId: sessionId,
             requestId: requestId,
             chars: text.length,
+            language: body.language,
             preview: text.slice(0, 80)
         });
 

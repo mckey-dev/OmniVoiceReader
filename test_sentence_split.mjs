@@ -86,6 +86,18 @@ assert(
     "remaining long line is capped"
 );
 
+assertEqual(
+    splitSentences("Hello world. This is English."),
+    ["Hello world.", "This is English."],
+    "english period split"
+);
+
+assertEqual(
+    splitSentences("Version 3.14 is ready."),
+    ["Version 3.14 is ready."],
+    "decimal is not a sentence end"
+);
+
 console.log("test_sentence_split: ok");
 console.log({
     max: MAX_SENTENCE_LENGTH,

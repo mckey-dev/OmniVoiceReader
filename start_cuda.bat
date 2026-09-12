@@ -29,6 +29,9 @@ echo Python が見つかりません。Python 3 をインストールしてく�
 exit /b 1
 
 :HAVE_PY
+echo NVIDIA ドライバを確認しています...
+%PY% gpu_runtime.py
+if errorlevel 1 goto DRIVER_FAIL
 if exist "%PYTHON_EXE%" goto HAVE_VENV
 echo 仮想環境を作成しています: %VENV_DIR%
 %PY% -m venv "%VENV_DIR%"
@@ -42,7 +45,8 @@ echo 既定は torch の CUDA 13.0 版 (cu130) です。
 if errorlevel 1 goto REQ_FAIL
 
 :HAVE_VENV
-if not exist "sample.wav" goto NO_SAMPLE
+"%PYTHON_EXE%" -c "from sample_audio import ensure_sample_wav; ensure_sample_wav()"
+if errorlevel 1 goto NO_SAMPLE
 if exist "voice_clone_prompt.pt" goto START_SERVER
 echo voice_clone_prompt.pt が無いため、参照音声から作成します...
 "%PYTHON_EXE%" test_voice_prompt_save_load.py
@@ -50,13 +54,13 @@ if errorlevel 1 goto PROMPT_FAIL
 goto START_SERVER
 
 :NO_SAMPLE
-echo sample.wav が見つかりません。
-echo sample.wav を置いてから再実行してください。
+echo 参照音声の準備に失敗しました。
+echo sample.wav / sample.mp3 / sample.ogg などを置いてから再実行してください。
 exit /b 1
 
 :NO_PROMPT
 echo voice_clone_prompt.pt が見つかりません。
-echo sample.wav を置いてから再実行してください。
+echo sample.wav / sample.mp3 / sample.ogg などを置いてから再実行してください。
 exit /b 1
 
 :PROMPT_FAIL
@@ -69,6 +73,10 @@ exit /b 1
 
 :PIP_FAIL
 echo pip の更新に失敗しました。
+exit /b 1
+
+:DRIVER_FAIL
+echo NVIDIA ドライバの確認に失敗しました。
 exit /b 1
 
 :REQ_FAIL

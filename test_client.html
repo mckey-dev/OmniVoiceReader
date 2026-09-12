@@ -179,6 +179,24 @@ OmniVoiceを使って、一文ずつ音声を生成します。
         </div>
 
         <div class="control-row">
+            <label for="languageInput">language：</label>
+            <div>
+                <input
+                    type="search"
+                    id="languageFilter"
+                    placeholder="検索（ja, Japanese, 日本語）"
+                    style="width: 100%; box-sizing: border-box; margin-bottom: 4px;"
+                >
+                <select id="languageInput" style="width: 100%;">
+                    <option value="auto">自動（本文から判定）</option>
+                    <option value="none">指定なし</option>
+                    <option value="Japanese">日本語 / Japanese (ja)</option>
+                    <option value="English">英語 / English (en)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="control-row">
             <label for="numStepInput">num_step：</label>
             <input
                 type="number"
@@ -285,6 +303,7 @@ OmniVoiceを使って、一文ずつ音声を生成します。
     <div id="sentences"></div>
 
 
+<script src="extension/language_ui.js"></script>
 <script>
 
 // ================================================================================
@@ -447,7 +466,7 @@ function splitSentences(text) {
         .map(line => line.trim())
         .filter(line => line.length > 0)
         .flatMap(line => line
-            .split(/(?<=[。．！？!?])/)
+            .split(/(?<=[。．！？!?])|(?<=\.["'”’)\]]*)\s+(?=[A-Z"“‘(\[])/)
             .map(part => part.trim())
             .filter(part => part.length > 0)
         )
@@ -606,10 +625,12 @@ function buildTtsRequest(text) {
     const classTemperature = Number(
         document.getElementById("classTemperatureInput").value
     );
+    const language = document.getElementById("languageInput").value;
 
     const body = {
         text: text,
-        denoise: document.getElementById("denoiseInput").checked
+        denoise: document.getElementById("denoiseInput").checked,
+        language: language || "auto"
     };
 
     if (instruct) {
@@ -1146,6 +1167,38 @@ function stopReading() {
             "current",
             "generating"
         );
+    });
+}
+
+setupLanguageSelect();
+
+async function setupLanguageSelect() {
+    const languageInput = document.getElementById("languageInput");
+    const languageFilter = document.getElementById("languageFilter");
+    let catalog = null;
+
+    async function render(selectedValue) {
+        if (!catalog) {
+            return;
+        }
+
+        fillLanguageSelect(
+            languageInput,
+            catalog,
+            selectedValue || languageInput.value || "auto",
+            languageFilter.value
+        );
+    }
+
+    try {
+        catalog = await loadLanguageCatalog("extension/languages.json");
+        await render(languageInput.value || "auto");
+    } catch (error) {
+        console.warn("Failed to load language catalog:", error);
+    }
+
+    languageFilter.addEventListener("input", () => {
+        render(languageInput.value);
     });
 }
 

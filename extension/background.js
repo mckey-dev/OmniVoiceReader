@@ -158,7 +158,8 @@ function defaultExtensionSettings() {
         t_shift: 0.1,
         position_temperature: 5.0,
         class_temperature: 0.0,
-        denoise: true
+        denoise: true,
+        language: "auto"
     };
 }
 
@@ -209,6 +210,27 @@ function normalizeExtensionSettings(value) {
 
     if (typeof value.denoise === "boolean") {
         settings.denoise = value.denoise;
+    }
+
+    if (typeof value.language === "string") {
+        const language = value.language.trim();
+        const aliases = {
+            auto: "auto",
+            detect: "auto",
+            ja: "Japanese",
+            jp: "Japanese",
+            japanese: "Japanese",
+            en: "English",
+            english: "English",
+            none: "none"
+        };
+        const mapped = aliases[language.toLowerCase()];
+
+        if (mapped) {
+            settings.language = mapped;
+        } else if (language) {
+            settings.language = language;
+        }
     }
 
     const playbackSpeed = Number(value.playbackSpeed);

@@ -1,16 +1,16 @@
 # ================================================================================
 # server.py
 #
-# OmniVoice を AMD GPU で動かすローカル TTS サーバー。
+# OmniVoice をローカル GPU（ROCm / CUDA）または CPU で動かす TTS サーバー。
 # ================================================================================
 
 import os
 import traceback
 
-# AMD Radeon / ROCm の最適化
-# torch を import する前に設定すること
+from gpu_runtime import configure_backend_env, print_torch_device, resolve_torch_device
 
-os.environ["TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL"] = "1"
+# ROCm の最適化。torch を import する前に設定すること。CUDA では無視される。
+configure_backend_env()
 
 from miopen_log import flush_miopen_warnings, install_miopen_log_filter
 
@@ -35,12 +35,19 @@ from pydantic import BaseModel, Field
 from omnivoice import OmniVoice, VoiceClonePrompt
 
 from model_store import ensure_omnivoice_model
+from sample_audio import SAMPLE_WAV, ensure_sample_wav
+from tts_language import (
+    DEFAULT_LANGUAGE,
+    language_catalog,
+    normalize_language_choice,
+    resolve_tts_language,
+)
 
 
 # 設定
 
 PROMPT_FILE = "voice_clone_prompt.pt"
-SAMPLE_FILE = "sample.wav"
+SAMPLE_FILE = SAMPLE_WAV
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 SETTINGS_FILE = os.path.join(ROOT_DIR, "extension", "settings.json")
 
@@ -71,6 +78,7 @@ class TTSRequest(BaseModel):
     position_temperature: Optional[float] = Field(default=None, ge=0)
     class_temperature: Optional[float] = Field(default=None, ge=0)
     denoise: Optional[bool] = None
+    language: Optional[str] = None
 
 
 # ================================================================================
@@ -93,6 +101,7 @@ class ExtensionSettings(BaseModel):
         ge=0,
     )
     denoise: bool = DEFAULT_DENOISE
+    language: str = DEFAULT_LANGUAGE
 
 
 # ================================================================================
@@ -108,6 +117,7 @@ def default_generation_options():
         "position_temperature": DEFAULT_POSITION_TEMPERATURE,
         "class_temperature": DEFAULT_CLASS_TEMPERATURE,
         "denoise": DEFAULT_DENOISE,
+        "language": DEFAULT_LANGUAGE,
     }
 
 
@@ -154,6 +164,7 @@ def resolve_generation_options(request):
             if request.denoise is None
             else request.denoise
         ),
+        "language": normalize_language_choice(request.language),
     }
 
 
@@ -182,9 +193,17 @@ def default_extension_settings():
 # ================================================================================
 def parse_extension_settings(data):
     if hasattr(ExtensionSettings, "model_validate"):
-        return ExtensionSettings.model_validate(data)
+        settings = ExtensionSettings.model_validate(data)
+    else:
+        settings = ExtensionSettings.parse_obj(data)
 
-    return ExtensionSettings.parse_obj(data)
+    payload = settings_to_dict(settings)
+    payload["language"] = normalize_language_choice(payload.get("language"))
+
+    if hasattr(ExtensionSettings, "model_validate"):
+        return ExtensionSettings.model_validate(payload)
+
+    return ExtensionSettings.parse_obj(payload)
 
 
 # ================================================================================
@@ -238,32 +257,26 @@ def read_extension_settings():
 # ================================================================================
 # require_sample_audio
 # 参照音声が無いときは、モデルを読む前に起動を止める。
+# MP3 / OGG などがあれば sample.wav へ変換する。
 # ================================================================================
 def require_sample_audio():
-    if os.path.exists(SAMPLE_FILE):
-        return
-
-    print()
-    print("sample.wav が見つかりません。")
-    print("参照音声 sample.wav を置いてから、もう一度起動してください。")
-    raise SystemExit(1)
+    ensure_sample_wav()
 
 
 require_sample_audio()
 
 
+device = resolve_torch_device(torch)
+
+
 # モデルを読み込む
 
 print("=" * 60)
-print("OmniVoice Reader Server - AMD GPU")
+print(f"OmniVoice Reader Server - {device['label']}")
 print("=" * 60)
 
 print()
-print("PyTorch:", torch.__version__)
-print("CUDA available:", torch.cuda.is_available())
-
-if torch.cuda.is_available():
-    print("GPU:", torch.cuda.get_device_name(0))
+print_torch_device(torch, device)
 
 print()
 print("Loading OmniVoice...")
@@ -276,8 +289,8 @@ load_start = time.perf_counter()
 try:
     model = OmniVoice.from_pretrained(
         model_dir,
-        device_map="cuda:0",
-        dtype=torch.float16,
+        device_map=device["device_map"],
+        dtype=device["dtype"],
     )
 except Exception as error:
     print(f"Failed to load OmniVoice: {error}")
@@ -344,7 +357,7 @@ def root():
     return {
         "status": "ok",
         "service": "OmniVoice Local Reader",
-        "device": "AMD GPU",
+        "device": device["label"],
     }
 
 
@@ -369,6 +382,17 @@ def tts_defaults():
         "status": "ok",
         "defaults": default_generation_options(),
     }
+
+
+# ================================================================================
+# tts_languages
+# OmniVoice が受け付ける language の一覧を返す。選択 UI 用。
+# ================================================================================
+@app.get("/tts/languages")
+def tts_languages():
+    catalog = language_catalog()
+    catalog["status"] = "ok"
+    return catalog
 
 
 # ================================================================================
@@ -415,6 +439,7 @@ def tts(request: TTSRequest):
         )
 
     options = resolve_generation_options(request)
+    language = resolve_tts_language(options["language"], text)
 
     print()
     print("-" * 60)
@@ -422,6 +447,7 @@ def tts(request: TTSRequest):
     if request.request_id:
         print(f"id: {request.request_id}")
     print(f"chars: {len(text)}")
+    print(f"language: {language or 'none'}")
     print(text)
     print("Options:", options)
 
@@ -430,7 +456,7 @@ def tts(request: TTSRequest):
     try:
         audio = model.generate(
             text=text,
-            language="Japanese",
+            language=language,
             voice_clone_prompt=voice_clone_prompt,
             instruct=options["instruct"],
             num_step=options["num_step"],

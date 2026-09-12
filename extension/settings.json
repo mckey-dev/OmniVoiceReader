@@ -1,11 +1,12 @@
 {
-  "playbackSpeed": 0.9,
-  "playbackVolume": 0.5,
-  "instruct": "",
-  "num_step": 8,
+  "playbackSpeed": 1.0,
+  "playbackVolume": 0.8,
+  "instruct": "female, teenager",
+  "num_step": 32,
   "guidance_scale": 2.0,
   "t_shift": 0.1,
   "position_temperature": 5.0,
   "class_temperature": 0.0,
-  "denoise": true
+  "denoise": true,
+  "language": "Japanese"
 }

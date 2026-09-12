@@ -74,7 +74,7 @@ function splitLongSentence(sentence) {
 
 // ================================================================================
 // splitSentences
-// 改行で分け、各行を句点で分け、長い文はさらに短くする。
+// 改行で分け、各行を句点や英文のピリオドで分け、長い文はさらに短くする。
 // ================================================================================
 export function splitSentences(text) {
     const source = String(text || "")
@@ -92,7 +92,7 @@ export function splitSentences(text) {
         .map(line => line.trim())
         .filter(line => line.length > 0)
         .flatMap(line => line
-            .split(/(?<=[。．！？!?])/)
+            .split(/(?<=[。．！？!?])|(?<=\.["'”’)\]]*)\s+(?=[A-Z"“‘(\[])/)
             .map(part => part.trim())
             .filter(part => part.length > 0)
         )

@@ -70,7 +70,8 @@
     }
 
     .generation-grid input[type="number"],
-    .generation-grid input[type="text"] {
+    .generation-grid input[type="text"],
+    .generation-grid select {
       width: 100%;
       box-sizing: border-box;
       padding: 4px 6px;
@@ -80,8 +81,13 @@
       grid-column: 1 / -1;
     }
 
-    .generation-instruct input {
+    .generation-instruct input,
+    .generation-instruct select {
       margin-top: 4px;
+    }
+
+    #languageFilter {
+      margin-bottom: 0;
     }
 
     .generation-check {
@@ -217,6 +223,20 @@
     </div>
 
     <div class="generation-grid">
+      <label class="generation-instruct" for="languageInput">
+        language
+        <input
+          id="languageFilter"
+          type="search"
+          placeholder="検索（ja, Japanese, 日本語）">
+        <select id="languageInput">
+          <option value="auto">自動（本文から判定）</option>
+          <option value="none">指定なし</option>
+          <option value="Japanese">日本語 / Japanese (ja)</option>
+          <option value="English">英語 / English (en)</option>
+        </select>
+      </label>
+
       <label class="generation-instruct" for="instructInput">
         instruct
         <input
@@ -281,6 +301,7 @@
 
   <pre id="result"></pre>
 
+  <script src="language_ui.js"></script>
   <script src="popup.js"></script>
 
 </body>

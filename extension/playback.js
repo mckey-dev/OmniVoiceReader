@@ -369,7 +369,8 @@ export function getGenerationOptions() {
         t_shift: state.tShift,
         position_temperature: state.positionTemperature,
         class_temperature: state.classTemperature,
-        denoise: state.denoise
+        denoise: state.denoise,
+        language: state.language
     };
 }
 
@@ -414,6 +415,10 @@ function applyGenerationOptions(options = {}) {
 
     if (typeof options.denoise === "boolean") {
         state.denoise = options.denoise;
+    }
+
+    if (typeof options.language === "string" && options.language.trim()) {
+        state.language = options.language.trim();
     }
 }
 

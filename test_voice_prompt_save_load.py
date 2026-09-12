@@ -6,8 +6,9 @@
 
 import os
 
-# AMD Radeon 780M / ROCm の最適化
-os.environ["TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL"] = "1"
+from gpu_runtime import configure_backend_env, print_torch_device, resolve_torch_device
+
+configure_backend_env()
 
 from miopen_log import flush_miopen_warnings, install_miopen_log_filter
 
@@ -20,10 +21,11 @@ import soundfile as sf
 from omnivoice import OmniVoice, VoiceClonePrompt
 
 from model_store import ensure_omnivoice_model
+from sample_audio import SAMPLE_WAV, ensure_sample_wav
 from sample_text import ensure_sample_text
 
 
-REF_AUDIO = "sample.wav"
+REF_AUDIO = SAMPLE_WAV
 REF_TEXT_FILE = "sample.txt"
 
 PROMPT_FILE = "voice_clone_prompt.pt"
@@ -32,14 +34,14 @@ OUTPUT_FILE = "output_amd_saved_prompt.wav"
 TEST_TEXT = "こんにちは。今日はとてもいい天気ですね。"
 
 
+device = resolve_torch_device(torch)
+
 print("=" * 60)
-print("OmniVoice AMD GPU - Saved Voice Clone Prompt Test")
+print(f"OmniVoice {device['label']} - Saved Voice Clone Prompt Test")
 print("=" * 60)
 
 print()
-print("PyTorch:", torch.__version__)
-print("CUDA available:", torch.cuda.is_available())
-print("GPU:", torch.cuda.get_device_name(0))
+print_torch_device(torch, device)
 
 
 # モデルを読み込む
@@ -54,8 +56,8 @@ start = time.perf_counter()
 
 model = OmniVoice.from_pretrained(
     model_dir,
-    device_map="cuda:0",
-    dtype=torch.float16,
+    device_map=device["device_map"],
+    dtype=device["dtype"],
 )
 
 elapsed = time.perf_counter() - start
@@ -64,15 +66,14 @@ flush_miopen_warnings()
 print(f"Model loaded in {elapsed:.2f} sec")
 
 
-# 参照テキストを用意する。無ければ sample.wav から書き起こす。
+print()
+print("Preparing reference audio...")
+ensure_sample_wav()
+
+# 参照テキストを用意する。無ければ参照音声から書き起こす。
 
 print()
 print("Preparing reference text...")
-
-if not os.path.isfile(REF_AUDIO):
-    raise FileNotFoundError(
-        f"Reference audio not found: {REF_AUDIO}"
-    )
 
 reference_text = ensure_sample_text(
     model,
@@ -132,7 +133,7 @@ print("Test text:")
 print(TEST_TEXT)
 
 print()
-print("Generating speech on AMD GPU...")
+print(f"Generating speech on {device['label']}...")
 
 start = time.perf_counter()
 
