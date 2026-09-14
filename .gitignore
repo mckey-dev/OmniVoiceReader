@@ -12,9 +12,13 @@ venv_cuda/
 # Models downloaded at runtime
 models/
 
-# Personal / generated voice assets
+# Personal / generated voice clone assets
+voice/*
+!voice/.gitkeep
 bak/
 音声/
+
+# Legacy copies at the repository root
 sample.wav
 sample.mp3
 sample.ogg

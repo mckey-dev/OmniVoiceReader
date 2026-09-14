@@ -6,8 +6,8 @@
 
 import os
 
-from model_store import ensure_whisper_model
-from sample_audio import load_mono
+from server.model_store import ensure_whisper_model
+from server.sampling.sample_audio import load_mono
 
 
 # ================================================================================

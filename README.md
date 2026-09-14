@@ -8,7 +8,7 @@ Version: **1.0.0**
 - サーバー: 手元の GPU（AMD ROCm / NVIDIA CUDA）または CPU で音声を生成する
 - 拡張: ページ本文、または選択したテキストだけを読み上げる
 - 再生中は、現在の文をページ上でハイライトする
-- 声は `sample.wav`（または `sample.mp3` / `sample.ogg` などから変換）から作ったクローン用プロンプトを使う
+- 声は `voice/sample.wav`（または `sample.mp3` / `sample.ogg` などから変換）から作ったクローン用プロンプトを使う
 
 この環境の GPU は次の 2 枚です。
 
@@ -32,20 +32,21 @@ Version: **1.0.0**
 - Python 3.12 相当
 - Google Chrome
 - GPU を使う場合は、対応する PyTorch（ROCm または CUDA）
-- 声クローン用の参照音声 `sample.wav`、`sample.mp3`、`sample.ogg` など（書き起こし `sample.txt` は無ければ自動作成）
+- 声クローン用の参照音声 `voice/sample.wav`、`voice/sample.mp3`、`voice/sample.ogg` など（書き起こし `voice/sample.txt` は無ければ自動作成）
 
 ## ディレクトリの見取り
 
 | パス | 内容 |
 | --- | --- |
-| `server.py` | ローカル TTS サーバー（`http://127.0.0.1:8000`） |
+| `server/` | ローカル TTS サーバー（`python -m server` → `http://127.0.0.1:8000`） |
+| `server/sampling/` | 参照音声の変換と声クローン用プロンプトの作成 |
 | `extension/` | Chrome 拡張（MV3） |
 | `extension/settings.json` | 速度・音量・生成オプション |
 | `models/OmniVoice` | TTS モデル。無ければ起動時にダウンロード |
-| `models/whisper-large-v3-turbo` | `sample.txt` 自動作成用 |
-| `voice_clone_prompt.pt` | 声クローン用プロンプト |
-| `test_client.html` | 拡張を使わないブラウザ単体の試験 UI |
-| `test_sentence_split.mjs` | 文分割の確認用 |
+| `models/whisper-large-v3-turbo` | `voice/sample.txt` 自動作成用 |
+| `voice/` | 参照音声・書き起こし・声クローン用プロンプト・確認用 WAV |
+| `test/test_client.html` | 拡張を使わないブラウザ単体の試験 UI |
+| `test/test_sentence_split.mjs` | 文分割の確認用 |
 
 ## 1. 仮想環境と依存パッケージ
 
@@ -79,22 +80,22 @@ python -m pip install -r requirements_amd.txt
 | フォルダ | 用途 |
 | --- | --- |
 | `models/OmniVoice` | TTS。無ければ起動時に `k2-fsa/OmniVoice` をダウンロード |
-| `models/whisper-large-v3-turbo` | `sample.txt` 自動作成用。無ければ書き起こし時にダウンロード |
+| `models/whisper-large-v3-turbo` | `voice/sample.txt` 自動作成用。無ければ書き起こし時にダウンロード |
 
 ## 3. 声クローン用プロンプト
 
-`sample.wav` が無いと、サーバーは起動しません。`sample.mp3` / `sample.ogg` / `sample.oga` / `sample.flac` があれば、起動時に `sample.wav` へ変換します。起動スクリプトも同じ条件です。
+`voice/sample.wav` が無いと、サーバーは起動しません。`voice/sample.mp3` / `voice/sample.ogg` / `voice/sample.oga` / `voice/sample.flac` があれば、起動時に `voice/sample.wav` へ変換します。起動スクリプトも同じ条件です。
 
-サーバーは起動時に `voice_clone_prompt.pt` を読み込みます。このファイルが無くて参照音声がある場合、起動スクリプトが自動で作成します。
+サーバーは起動時に `voice/voice_clone_prompt.pt` を読み込みます。このファイルが無くて参照音声がある場合、起動スクリプトが自動で作成します。
 
 手動で作る場合:
 
 ```powershell
 .\venv_amd\Scripts\Activate.ps1
-python test_voice_prompt_save_load.py
+python -m server.sampling.build_voice_prompt
 ```
 
-`sample.txt` が無ければ Whisper で書き起こします。WAV / OGG / FLAC は `soundfile`、MP3 は `miniaudio` で読むので ffmpeg は不要です。既にある `sample.txt` は、手修正した内容を優先します。
+`voice/sample.txt` が無ければ Whisper で書き起こします。WAV / OGG / FLAC は `soundfile`、MP3 は `miniaudio` で読むので ffmpeg は不要です。既にある `voice/sample.txt` は、手修正した内容を優先します。
 
 ## 4. TTS サーバーの起動
 
@@ -119,7 +120,7 @@ chmod +x start.sh start_amd.sh start_cuda.sh
 
 ```powershell
 .\venv_amd\Scripts\Activate.ps1
-python server.py
+python -m server
 ```
 
 起動後:
@@ -146,13 +147,13 @@ python server.py
 | `class_temperature` | 0.0 |
 | `denoise` | true |
 
-既定値は `server.py` の `DEFAULT_*` で変えます。拡張ポップアップの「生成設定」と `test_client.html` からも同じ項目を送れます。
+既定値は `server/app.py` の `DEFAULT_*` で変えます。拡張ポップアップの「生成設定」と `test/test_client.html` からも同じ項目を送れます。
 
 ### instruct の書き方
 
 `instruct` は自由文ではありません。OmniVoice 0.2.1 が認めるタグだけを、カンマで並べます。空、または未指定なら声クローンだけが使われます。
 
-このプロジェクトは常に `sample.wav` 由来の声クローンを使います。`instruct` を入れると、その声の上に性別・年齢・音高・スタイル・口音／方言の指定が乗ります。リストに無い語（`happy` や「ゆっくりめに」など）は `ValueError` になります。
+このプロジェクトは常に `voice/sample.wav` 由来の声クローンを使います。`instruct` を入れると、その声の上に性別・年齢・音高・スタイル・口音／方言の指定が乗ります。リストに無い語（`happy` や「ゆっくりめに」など）は `ValueError` になります。
 
 書き方:
 
@@ -257,7 +258,7 @@ python server.py
 
 ### language の選び方
 
-OmniVoice 0.2.1 は **646 言語** を受け付けます。ポップアップと `test_client.html` の language から選べます。検索欄に `ja` や `日本語`、`French` などを入れると絞り込めます。
+OmniVoice 0.2.1 は **646 言語** を受け付けます。ポップアップと `test/test_client.html` の language から選べます。検索欄に `ja` や `日本語`、`French` などを入れると絞り込めます。
 
 特別な値:
 
@@ -301,7 +302,7 @@ OmniVoice 0.2.1 は **646 言語** を受け付けます。ポップアップと
 
 拡張の速度・音量・生成オプションは `extension/settings.json` に保存します。ポップアップで変えると、サーバーの `PUT /extension/settings` がこのファイルへ書き戻します。サーバー停止中は、拡張内の `settings.json` を読みます。
 
-初回起動はモデル読み込みに時間がかかります。拡張や `test_client.html` を使う前に、サーバーを起動しておいてください。
+初回起動はモデル読み込みに時間がかかります。拡張や `test/test_client.html` を使う前に、サーバーを起動しておいてください。
 
 ## 5. Chrome 拡張の読み込み
 
@@ -345,13 +346,13 @@ OmniVoice 0.2.1 は **646 言語** を受け付けます。ポップアップと
 拡張を使わず、テキストを直接読み上げたい場合:
 
 1. サーバーを起動する
-2. `test_client.html` をブラウザで開く
+2. `test/test_client.html` をブラウザで開く
 3. 文章を入力して「読み上げ開始」
 
 文分割だけを確認する場合:
 
 ```powershell
-node test_sentence_split.mjs
+node test/test_sentence_split.mjs
 ```
 
 ## 8. 調査用ログ

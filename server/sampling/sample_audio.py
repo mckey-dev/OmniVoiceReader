@@ -9,15 +9,11 @@ import os
 import numpy as np
 import soundfile as sf
 
-
-SAMPLE_WAV = "sample.wav"
-
-SAMPLE_SOURCES = (
-    "sample.wav",
-    "sample.mp3",
-    "sample.ogg",
-    "sample.oga",
-    "sample.flac",
+from server.paths import (
+    SAMPLE_SOURCE_NAMES,
+    SAMPLE_SOURCES,
+    SAMPLE_WAV,
+    VOICE_DIR,
 )
 
 
@@ -26,7 +22,7 @@ SAMPLE_SOURCES = (
 # 置ける参照音声ファイル名を、案内文用に並べる。
 # ================================================================================
 def sample_source_hint():
-    return " / ".join(SAMPLE_SOURCES)
+    return " / ".join(f"voice/{name}" for name in SAMPLE_SOURCE_NAMES)
 
 
 # ================================================================================
@@ -116,6 +112,7 @@ def ensure_sample_wav():
         print(f"{sample_source_hint()} のいずれかを置いてから、もう一度起動してください。")
         raise SystemExit(1)
 
+    os.makedirs(VOICE_DIR, exist_ok=True)
     print(f"{source} を {SAMPLE_WAV} に変換しています...")
     waveform, sample_rate = load_mono(source)
     sf.write(SAMPLE_WAV, waveform, sample_rate)

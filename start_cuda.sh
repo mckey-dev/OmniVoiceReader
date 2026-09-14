@@ -24,7 +24,7 @@ else
 fi
 
 echo "NVIDIA ドライバを確認しています..."
-"${PY}" gpu_runtime.py
+"${PY}" -m server.gpu_runtime
 
 if [ ! -x "${PYTHON_EXE}" ]; then
     echo "仮想環境を作成しています: ${VENV_DIR}"
@@ -42,18 +42,18 @@ if [ ! -x "${PYTHON_EXE}" ]; then
     fi
 fi
 
-if ! "${PYTHON_EXE}" -c "from sample_audio import ensure_sample_wav; ensure_sample_wav()"; then
+if ! "${PYTHON_EXE}" -c "from server.sampling.sample_audio import ensure_sample_wav; ensure_sample_wav()"; then
     echo "参照音声の準備に失敗しました。"
-    echo "sample.wav / sample.mp3 / sample.ogg などを置いてから再実行してください。"
+    echo "voice フォルダに sample.wav / sample.mp3 / sample.ogg などを置いてから再実行してください。"
     exit 1
 fi
 
-if [ ! -f "voice_clone_prompt.pt" ]; then
-    echo "voice_clone_prompt.pt が無いため、参照音声から作成します..."
-    "${PYTHON_EXE}" test_voice_prompt_save_load.py
+if [ ! -f "voice/voice_clone_prompt.pt" ]; then
+    echo "voice/voice_clone_prompt.pt が無いため、参照音声から作成します..."
+    "${PYTHON_EXE}" -m server.sampling.build_voice_prompt
 fi
 
 echo "サーバーを起動します: http://127.0.0.1:8000"
-exec "${PYTHON_EXE}" server.py
+exec "${PYTHON_EXE}" -m server
 
 # ================================================================================

@@ -8,14 +8,13 @@ import os
 
 from huggingface_hub import snapshot_download
 
-
-REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+from server.paths import PROJECT_ROOT
 
 MODEL_REPO = "k2-fsa/OmniVoice"
 ASR_REPO = "openai/whisper-large-v3-turbo"
 
-MODEL_DIR = os.path.join(REPO_ROOT, "models", "OmniVoice")
-ASR_DIR = os.path.join(REPO_ROOT, "models", "whisper-large-v3-turbo")
+MODEL_DIR = os.path.join(PROJECT_ROOT, "models", "OmniVoice")
+ASR_DIR = os.path.join(PROJECT_ROOT, "models", "whisper-large-v3-turbo")
 
 
 # ================================================================================

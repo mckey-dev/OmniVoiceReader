@@ -303,7 +303,7 @@ OmniVoiceを使って、一文ずつ音声を生成します。
     <div id="sentences"></div>
 
 
-<script src="extension/language_ui.js"></script>
+<script src="../extension/language_ui.js"></script>
 <script>
 
 // ================================================================================
@@ -1191,7 +1191,7 @@ async function setupLanguageSelect() {
     }
 
     try {
-        catalog = await loadLanguageCatalog("extension/languages.json");
+        catalog = await loadLanguageCatalog("../extension/languages.json");
         await render(languageInput.value || "auto");
     } catch (error) {
         console.warn("Failed to load language catalog:", error);

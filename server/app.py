@@ -1,5 +1,5 @@
 # ================================================================================
-# server.py
+# app.py
 #
 # OmniVoice をローカル GPU（ROCm / CUDA）または CPU で動かす TTS サーバー。
 # ================================================================================
@@ -7,12 +7,12 @@
 import os
 import traceback
 
-from gpu_runtime import configure_backend_env, print_torch_device, resolve_torch_device
+from server.gpu_runtime import configure_backend_env, print_torch_device, resolve_torch_device
 
 # ROCm の最適化。torch を import する前に設定すること。CUDA では無視される。
 configure_backend_env()
 
-from miopen_log import flush_miopen_warnings, install_miopen_log_filter
+from server.miopen_log import flush_miopen_warnings, install_miopen_log_filter
 
 install_miopen_log_filter()
 
@@ -34,9 +34,10 @@ from pydantic import BaseModel, Field
 
 from omnivoice import OmniVoice, VoiceClonePrompt
 
-from model_store import ensure_omnivoice_model
-from sample_audio import SAMPLE_WAV, ensure_sample_wav
-from tts_language import (
+from server.sampling.sample_audio import SAMPLE_WAV, ensure_sample_wav
+from server.model_store import ensure_omnivoice_model
+from server.paths import PROJECT_ROOT, VOICE_CLONE_PROMPT
+from server.tts_language import (
     DEFAULT_LANGUAGE,
     language_catalog,
     normalize_language_choice,
@@ -47,10 +48,9 @@ from tts_language import (
 # 設定
 
 APP_VERSION = "1.0.0"
-PROMPT_FILE = "voice_clone_prompt.pt"
+PROMPT_FILE = VOICE_CLONE_PROMPT
 SAMPLE_FILE = SAMPLE_WAV
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-SETTINGS_FILE = os.path.join(ROOT_DIR, "extension", "settings.json")
+SETTINGS_FILE = os.path.join(PROJECT_ROOT, "extension", "settings.json")
 
 HOST = "127.0.0.1"
 PORT = 8000
@@ -548,23 +548,5 @@ def ensure_port_available(host, port):
     finally:
         sock.close()
 
-
-if __name__ == "__main__":
-
-    import uvicorn
-
-    print()
-    print("=" * 60)
-    print(f"Server starting: http://{HOST}:{PORT}")
-    print("=" * 60)
-    print()
-
-    ensure_port_available(HOST, PORT)
-
-    uvicorn.run(
-        app,
-        host=HOST,
-        port=PORT,
-    )
 
 # ================================================================================

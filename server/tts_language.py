@@ -10,11 +10,12 @@ import re
 
 from omnivoice.utils.lang_map import LANG_NAME_TO_ID, lang_display_name
 
+from server.paths import PROJECT_ROOT
+
 
 DEFAULT_LANGUAGE = "auto"
 
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-LANGUAGES_FILE = os.path.join(ROOT_DIR, "extension", "languages.json")
+LANGUAGES_FILE = os.path.join(PROJECT_ROOT, "extension", "languages.json")
 
 LANGUAGE_ALIASES = {
     "auto": "auto",

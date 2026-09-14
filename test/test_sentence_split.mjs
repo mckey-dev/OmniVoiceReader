@@ -7,7 +7,7 @@
 import {
     MAX_SENTENCE_LENGTH,
     splitSentences
-} from "./extension/sentence.js";
+} from "../extension/sentence.js";
 
 function assert(condition, message) {
     if (!condition) {
