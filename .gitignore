@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+venv/
+venv_amd/
+venv_cuda/
+
+# Models downloaded at runtime
+models/
+
+# Personal / generated voice assets
+bak/
+音声/
+sample.wav
+sample.mp3
+sample.ogg
+sample.oga
+sample.flac
+sample.txt
+voice_clone_prompt.pt
+*.wav
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log

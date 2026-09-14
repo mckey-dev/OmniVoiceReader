@@ -46,6 +46,7 @@ from tts_language import (
 
 # 設定
 
+APP_VERSION = "1.0.0"
 PROMPT_FILE = "voice_clone_prompt.pt"
 SAMPLE_FILE = SAMPLE_WAV
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -331,7 +332,7 @@ print(f"Voice clone prompt loaded in {time.perf_counter() - prompt_start:.4f} se
 
 app = FastAPI(
     title="OmniVoice Local Reader",
-    version="0.2.0",
+    version=APP_VERSION,
 )
 
 
@@ -369,6 +370,7 @@ def root():
 def health():
     return {
         "status": "ok",
+        "version": APP_VERSION,
     }
 
 
