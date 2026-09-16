@@ -1,7 +1,7 @@
 // ================================================================================
 // popup.js
 //
-// 拡張ポップアップの UI。抽出、読み上げ開始、再生制御、進捗表示を行う。
+// 操作ウィンドウの UI。抽出、読み上げ開始、再生制御、進捗表示を行う。
 // ================================================================================
 
 const status = document.getElementById("status");
@@ -18,8 +18,11 @@ const speedRange = document.getElementById("speedRange");
 const speedValue = document.getElementById("speedValue");
 const volumeRange = document.getElementById("volumeRange");
 const volumeValue = document.getElementById("volumeValue");
+const highlightSentenceInput = document.getElementById("highlightSentenceInput");
+const autoReadChatInput = document.getElementById("autoReadChatInput");
 const instructInput = document.getElementById("instructInput");
 const numStepInput = document.getElementById("numStepInput");
+const speedInput = document.getElementById("speedInput");
 const guidanceScaleInput = document.getElementById("guidanceScaleInput");
 const tShiftInput = document.getElementById("tShiftInput");
 const positionTemperatureInput = document.getElementById("positionTemperatureInput");
@@ -31,13 +34,31 @@ let languageCatalog = null;
 
 // ================================================================================
 // getCurrentTab
-// 現在表示中のタブを取得する。
+// 読み上げ対象のタブを取得する。操作ウィンドウではなく、最後に使った通常窓を使う。
 // ================================================================================
 async function getCurrentTab() {
-    const [tab] = await chrome.tabs.query({
-        active: true,
-        currentWindow: true
-    });
+    let windowId;
+
+    try {
+        const last = await chrome.windows.getLastFocused({
+            windowTypes: ["normal"]
+        });
+        windowId = last && last.id;
+    } catch (error) {
+        windowId = undefined;
+    }
+
+    const query = {
+        active: true
+    };
+
+    if (windowId != null) {
+        query.windowId = windowId;
+    } else {
+        query.currentWindow = true;
+    }
+
+    const [tab] = await chrome.tabs.query(query);
 
     if (!tab || !tab.id) {
         throw new Error("現在のタブを取得できませんでした。");
@@ -173,6 +194,10 @@ function applyGenerationOptions(options) {
         numStepInput.value = String(options.num_step);
     }
 
+    if (Number.isFinite(Number(options.speed))) {
+        speedInput.value = String(options.speed);
+    }
+
     if (Number.isFinite(Number(options.guidance_scale))) {
         guidanceScaleInput.value = String(options.guidance_scale);
     }
@@ -205,6 +230,7 @@ function applyGenerationOptions(options) {
 function collectGenerationOptions() {
     return {
         instruct: instructInput.value,
+        speed: Number(speedInput.value),
         num_step: Number(numStepInput.value),
         guidance_scale: Number(guidanceScaleInput.value),
         t_shift: Number(tShiftInput.value),
@@ -240,6 +266,9 @@ function applySettingsToForm(settings) {
         volumeRange.value = String(volumePercent);
         volumeValue.textContent = volumePercent + "%";
     }
+
+    highlightSentenceInput.checked = Boolean(settings.highlightSentence);
+    autoReadChatInput.checked = Boolean(settings.autoReadChat);
 }
 
 // ================================================================================
@@ -285,6 +314,8 @@ async function restorePlaybackState() {
             error
         );
     }
+
+    await refreshVoices();
 }
 
 // ================================================================================
@@ -468,12 +499,36 @@ volumeRange.addEventListener("input", async () => {
 });
 
 // ================================================================================
+// ハイライト / チャット自動読み上げ
+// ================================================================================
+async function sendReaderFlags() {
+    try {
+        await sendCommand("changeReaderFlags", {
+            highlightSentence: highlightSentenceInput.checked,
+            autoReadChat: autoReadChatInput.checked
+        });
+    } catch (error) {
+        console.error("Reader flags error:", error);
+        status.textContent = "設定エラー:\n" + error.message;
+    }
+}
+
+highlightSentenceInput.addEventListener("change", () => {
+    sendReaderFlags();
+});
+
+autoReadChatInput.addEventListener("change", () => {
+    sendReaderFlags();
+});
+
+// ================================================================================
 // 生成設定の入力
 // 変更した生成オプションを offscreen へ送る。
 // ================================================================================
 [
     instructInput,
     languageInput,
+    speedInput,
     numStepInput,
     guidanceScaleInput,
     tShiftInput,
@@ -527,7 +582,7 @@ languageFilter.addEventListener("input", () => {
 
 // ================================================================================
 // onMessage
-// Offscreen からの読み上げ進捗をポップアップへ反映する。
+// Offscreen からの読み上げ進捗を操作ウィンドウへ反映する。
 // ================================================================================
 chrome.runtime.onMessage.addListener((message) => {
     if (message.action !== "readingProgress") {

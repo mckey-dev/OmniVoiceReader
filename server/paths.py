@@ -12,22 +12,19 @@ PROJECT_ROOT = os.path.dirname(PACKAGE_DIR)
 
 # 声クローン用の参照音声・書き起こし・プロンプト。コードではなく実行時データ。
 VOICE_DIR = os.path.join(PROJECT_ROOT, "voice")
+VOICES_FILE = os.path.join(VOICE_DIR, "voices.json")
 
-SAMPLE_WAV = os.path.join(VOICE_DIR, "sample.wav")
-SAMPLE_TXT = os.path.join(VOICE_DIR, "sample.txt")
-VOICE_CLONE_PROMPT = os.path.join(VOICE_DIR, "voice_clone_prompt.pt")
-OUTPUT_SAVED_PROMPT = os.path.join(VOICE_DIR, "output_saved_prompt.wav")
+# 移行前にルートへ置いていたファイル
+LEGACY_SAMPLE_WAV = os.path.join(VOICE_DIR, "sample.wav")
+LEGACY_SAMPLE_TXT = os.path.join(VOICE_DIR, "sample.txt")
+LEGACY_PROMPT = os.path.join(VOICE_DIR, "voice_clone_prompt.pt")
 
-SAMPLE_SOURCE_NAMES = (
-    "sample.wav",
-    "sample.mp3",
-    "sample.ogg",
-    "sample.oga",
-    "sample.flac",
-)
-
-SAMPLE_SOURCES = tuple(
-    os.path.join(VOICE_DIR, name) for name in SAMPLE_SOURCE_NAMES
+AUDIO_EXTENSIONS = (
+    ".wav",
+    ".mp3",
+    ".ogg",
+    ".oga",
+    ".flac",
 )
 
 # ================================================================================

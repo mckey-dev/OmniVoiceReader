@@ -25,6 +25,15 @@
     }
 
     const pageState = window.__omniVoicePageState;
+    let lastPointerScreen = null;
+
+    window.addEventListener("pointermove", (event) => {
+        lastPointerScreen = {
+            x: event.screenX,
+            y: event.screenY,
+            at: Date.now()
+        };
+    }, { passive: true });
 
     // ================================================================================
     // ensureHighlightStyle
@@ -87,6 +96,11 @@
 
         pageState.lastMatchEnd = 0;
     }
+
+    window.__omniVoiceSetHighlightRoot = setHighlightRoot;
+    window.__omniVoiceClearHighlight = clearHighlight;
+
+    let highlightEnabled = false;
 
     // ================================================================================
     // getHighlightRoot
@@ -497,6 +511,11 @@
     // 再生中の文をハイライトする。停止・完了時は解除する。
     // ================================================================================
     function highlightSentence(sentence, playbackState) {
+        if (!highlightEnabled) {
+            clearHighlight();
+            return;
+        }
+
         ensureHighlightStyle();
         clearHighlight();
 
@@ -552,6 +571,16 @@
     // 本文抽出、選択抽出、文ハイライトの要求を処理する。
     // ================================================================================
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        if (message.action === "getPointerScreen") {
+            sendResponse({
+                success: true,
+                x: lastPointerScreen ? lastPointerScreen.x : null,
+                y: lastPointerScreen ? lastPointerScreen.y : null,
+                at: lastPointerScreen ? lastPointerScreen.at : null
+            });
+            return true;
+        }
+
         if (message.action === "extractText") {
             const text = extractArticleText();
 
@@ -575,7 +604,32 @@
             return true;
         }
 
+        if (message.action === "setHighlightSentence") {
+            highlightEnabled = Boolean(message.value);
+
+            if (!highlightEnabled) {
+                clearHighlight();
+            }
+
+            sendResponse({ success: true });
+            return true;
+        }
+
         return false;
+    });
+
+    chrome.runtime.sendMessage({ action: "getReaderFlags" }, (response) => {
+        if (chrome.runtime.lastError) {
+            return;
+        }
+
+        if (response && typeof response.highlightSentence === "boolean") {
+            highlightEnabled = response.highlightSentence;
+
+            if (!highlightEnabled) {
+                clearHighlight();
+            }
+        }
     });
 
 })();

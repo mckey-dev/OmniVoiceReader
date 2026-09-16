@@ -1,40 +1,13 @@
 # ================================================================================
 # sample_audio.py
 #
-# 参照音声 sample.wav を用意する。sample.mp3 / sample.ogg などがあれば WAV に変換する。
+# 参照音声をモノラル WAV にする。
 # ================================================================================
 
 import os
 
 import numpy as np
 import soundfile as sf
-
-from server.paths import (
-    SAMPLE_SOURCE_NAMES,
-    SAMPLE_SOURCES,
-    SAMPLE_WAV,
-    VOICE_DIR,
-)
-
-
-# ================================================================================
-# sample_source_hint
-# 置ける参照音声ファイル名を、案内文用に並べる。
-# ================================================================================
-def sample_source_hint():
-    return " / ".join(f"voice/{name}" for name in SAMPLE_SOURCE_NAMES)
-
-
-# ================================================================================
-# find_sample_source
-# 使える参照音声のパスを返す。無ければ None。
-# ================================================================================
-def find_sample_source():
-    for name in SAMPLE_SOURCES:
-        if os.path.isfile(name):
-            return name
-
-    return None
 
 
 # ================================================================================
@@ -97,31 +70,25 @@ def load_mono(path):
 
 
 # ================================================================================
-# ensure_sample_wav
-# sample.wav が無ければ、sample.mp3 / sample.ogg などから変換して作る。
+# convert_to_wav
+# source_path を wav_path へ変換する。同じ WAV ならそのまま返す。
 # ================================================================================
-def ensure_sample_wav():
-    if os.path.isfile(SAMPLE_WAV):
-        return SAMPLE_WAV
+def convert_to_wav(source_path, wav_path):
+    if not os.path.isfile(source_path):
+        raise FileNotFoundError(source_path)
 
-    source = find_sample_source()
+    os.makedirs(os.path.dirname(wav_path) or ".", exist_ok=True)
 
-    if not source:
-        print()
-        print("参照音声が見つかりません。")
-        print(f"{sample_source_hint()} のいずれかを置いてから、もう一度起動してください。")
-        raise SystemExit(1)
+    if os.path.normcase(os.path.abspath(source_path)) == os.path.normcase(
+        os.path.abspath(wav_path)
+    ):
+        return wav_path
 
-    os.makedirs(VOICE_DIR, exist_ok=True)
-    print(f"{source} を {SAMPLE_WAV} に変換しています...")
-    waveform, sample_rate = load_mono(source)
-    sf.write(SAMPLE_WAV, waveform, sample_rate)
-    print(f"Saved: {SAMPLE_WAV}")
+    print(f"{source_path} を {wav_path} に変換しています...")
+    waveform, sample_rate = load_mono(source_path)
+    sf.write(wav_path, waveform, sample_rate)
+    print(f"Saved: {wav_path}")
 
-    return SAMPLE_WAV
-
-
-if __name__ == "__main__":
-    ensure_sample_wav()
+    return wav_path
 
 # ================================================================================

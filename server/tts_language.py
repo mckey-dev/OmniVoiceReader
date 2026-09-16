@@ -185,9 +185,25 @@ def write_languages_json(path=None):
     payload = language_catalog()
     os.makedirs(os.path.dirname(target), exist_ok=True)
 
-    with open(target, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, ensure_ascii=False, indent=2)
-        handle.write("\n")
+    def dump_item(item):
+        return json.dumps(item, ensure_ascii=False, separators=(", ", ": "))
+
+    lines = ["{"]
+    lines.append(f'  "default": {json.dumps(payload["default"], ensure_ascii=False)},')
+
+    for key in ("special", "frequent", "languages"):
+        items = payload[key]
+        lines.append(f'  "{key}": [')
+        for index, item in enumerate(items):
+            comma = "," if index < len(items) - 1 else ""
+            lines.append(f"    {dump_item(item)}{comma}")
+        lines.append("  ],")
+
+    lines.append(f'  "count": {payload["count"]}')
+    lines.append("}")
+
+    with open(target, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write("\n".join(lines) + "\n")
 
     return target
 

@@ -366,6 +366,7 @@ export function getGenerationOptions() {
         instruct: state.instruct,
         num_step: state.numStep,
         guidance_scale: state.guidanceScale,
+        speed: state.speed,
         t_shift: state.tShift,
         position_temperature: state.positionTemperature,
         class_temperature: state.classTemperature,
@@ -393,6 +394,12 @@ function applyGenerationOptions(options = {}) {
 
     if (Number.isFinite(guidanceScale) && guidanceScale >= 0) {
         state.guidanceScale = guidanceScale;
+    }
+
+    const speed = Number(options.speed);
+
+    if (Number.isFinite(speed) && speed > 0) {
+        state.speed = speed;
     }
 
     const tShift = Number(options.t_shift);

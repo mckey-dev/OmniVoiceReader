@@ -40,6 +40,7 @@ export const state = {
     instruct: "",
     numStep: 32,
     guidanceScale: 2.0,
+    speed: 1.0,
     tShift: 0.1,
     positionTemperature: 5.0,
     classTemperature: 0.0,

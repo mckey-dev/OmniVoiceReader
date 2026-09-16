@@ -20,6 +20,7 @@ function buildTtsRequest(text) {
         text: text,
         num_step: state.numStep,
         guidance_scale: state.guidanceScale,
+        speed: state.speed,
         t_shift: state.tShift,
         position_temperature: state.positionTemperature,
         class_temperature: state.classTemperature,

@@ -41,27 +41,7 @@ echo 必要なパッケージをインストールしています: %REQ_FILE%
 if errorlevel 1 goto REQ_FAIL
 
 :HAVE_VENV
-"%PYTHON_EXE%" -c "from server.sampling.sample_audio import ensure_sample_wav; ensure_sample_wav()"
-if errorlevel 1 goto NO_SAMPLE
-if exist "voice\voice_clone_prompt.pt" goto START_SERVER
-echo voice\voice_clone_prompt.pt が無いため、参照音声から作成します...
-"%PYTHON_EXE%" -m server.sampling.build_voice_prompt
-if errorlevel 1 goto PROMPT_FAIL
 goto START_SERVER
-
-:NO_SAMPLE
-echo 参照音声の準備に失敗しました。
-echo voice フォルダに sample.wav / sample.mp3 / sample.ogg などを置いてから再実行してください。
-exit /b 1
-
-:NO_PROMPT
-echo voice\voice_clone_prompt.pt が見つかりません。
-echo voice フォルダに sample.wav / sample.mp3 / sample.ogg などを置いてから再実行してください。
-exit /b 1
-
-:PROMPT_FAIL
-echo 声クローン用プロンプトの作成に失敗しました。
-exit /b 1
 
 :VENV_FAIL
 echo 仮想環境の作成に失敗しました。

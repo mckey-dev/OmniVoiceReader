@@ -7,7 +7,9 @@
   <style>
     body {
       width: 320px;
+      min-height: 100%;
       padding: 16px;
+      overflow-y: auto;
       font-family: sans-serif;
     }
 
@@ -54,6 +56,93 @@
       font-size: 13px;
     }
 
+    details.fold-settings {
+      margin-top: 16px;
+    }
+
+    details.fold-settings > summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      list-style: none;
+      font-size: 13px;
+      user-select: none;
+    }
+
+    details.fold-settings > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    details.fold-settings > summary::after {
+      content: "▸";
+      color: #666;
+      font-size: 12px;
+    }
+
+    details.fold-settings[open] > summary::after {
+      content: "▾";
+    }
+
+    details.fold-settings > summary:hover {
+      color: #222;
+    }
+
+    details.fold-settings .generation-grid {
+      margin-top: 10px;
+    }
+
+    .voice-empty,
+    .voice-status {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #555;
+    }
+
+    .voice-list {
+      margin-top: 10px;
+    }
+
+    .voice-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      font-size: 13px;
+    }
+
+    .voice-row label {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .voice-row button {
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+
+    .voice-name-label {
+      display: block;
+      margin-top: 10px;
+      font-size: 12px;
+    }
+
+    .voice-name-label input {
+      width: 100%;
+      box-sizing: border-box;
+      margin-top: 4px;
+      padding: 4px 6px;
+    }
+
+    #voiceFileInput {
+      display: block;
+      margin-top: 8px;
+      width: 100%;
+      font-size: 12px;
+    }
+
     input[type="range"] {
       width: 100%;
     }
@@ -96,6 +185,26 @@
       align-items: center;
       gap: 8px;
       font-size: 12px;
+    }
+
+    .option-check {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-top: 12px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .option-check input {
+      margin-top: 2px;
+    }
+
+    .option-note {
+      display: block;
+      margin-top: 2px;
+      font-size: 11px;
+      color: #666;
     }
 
     #status {
@@ -217,10 +326,59 @@
 
   </div>
 
-  <div class="setting">
-    <div class="setting-label">
-      <span>生成設定</span>
+  <label class="option-check" for="highlightSentenceInput">
+    <input
+      id="highlightSentenceInput"
+      type="checkbox">
+    <span>読み上げ中の文をハイライト</span>
+  </label>
+
+  <label class="option-check" for="autoReadChatInput">
+    <input
+      id="autoReadChatInput"
+      type="checkbox">
+    <span>
+      チャットの解答を自動で読む
+      <span class="option-note">ChatGPT / Gemini のみ。解答が止まってから読みます。</span>
+    </span>
+  </label>
+
+  <details class="fold-settings" id="voiceSettings">
+    <summary>
+      <span id="voiceSummaryLabel">声</span>
+    </summary>
+
+    <div id="voiceEmpty" class="voice-empty">
+      声がありません。wav / mp3 / ogg などを追加してください。
     </div>
+
+    <div id="voiceList" class="voice-list"></div>
+
+    <label class="voice-name-label" for="voiceNameInput">
+      名前
+      <input
+        id="voiceNameInput"
+        type="text"
+        placeholder="省略時はファイル名">
+    </label>
+
+    <input
+      id="voiceFileInput"
+      type="file"
+      accept=".wav,.mp3,.ogg,.oga,.flac,audio/wav,audio/mpeg,audio/ogg,audio/flac">
+
+    <button
+      id="voiceUploadButton"
+      class="main-button"
+      type="button">
+      アップロード
+    </button>
+
+    <div id="voiceStatus" class="voice-status"></div>
+  </details>
+
+  <details class="fold-settings generation-settings">
+    <summary>生成設定</summary>
 
     <div class="generation-grid">
       <label class="generation-instruct" for="languageInput">
@@ -244,6 +402,14 @@
           type="text"
           placeholder="空なら未指定">
       </label>
+
+      <label for="speedInput">speed</label>
+      <input
+        id="speedInput"
+        type="number"
+        min="0.25"
+        step="0.05"
+        value="1.0">
 
       <label for="numStepInput">num_step</label>
       <input
@@ -293,7 +459,7 @@
         denoise
       </label>
     </div>
-  </div>
+  </details>
 
   <div id="status">
     待機中
@@ -302,6 +468,7 @@
   <pre id="result"></pre>
 
   <script src="language_ui.js"></script>
+  <script src="voices_ui.js"></script>
   <script src="popup.js"></script>
 
 </body>

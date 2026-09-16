@@ -1,28 +1,29 @@
 # OmniVoice Reader
 
-Version: **1.0.0**  
-更新日: 2026-09-14
+Version: **v2.0.0**  
+更新日: 2026-09-16
 
 ローカルの OmniVoice TTS と Chrome 拡張で、Web ページの日本語を読み上げるプロジェクトです。
 
 - サーバー: 手元の GPU（AMD ROCm / NVIDIA CUDA）または CPU で音声を生成する
-- 拡張: ページ本文、または選択したテキストだけを読み上げる
-- 再生中は、現在の文をページ上でハイライトする
-- 声は `voice/sample.wav`（または `sample.mp3` / `sample.ogg` などから変換）から作ったクローン用プロンプトを使う
+- 拡張: ツールバーから操作ウィンドウを開き、ページ本文または選択テキストを読み上げる
+- 再生中は、操作ウィンドウに現在の文を出す。ページ上のハイライトは設定でオンにできる
+- ChatGPT / Gemini では、完成した解答を自動で読む設定がある（既定はオフ）
+- 声は操作ウィンドウの「声」から登録した参照音声（wav / mp3 / ogg など）でクローンする
 
-この環境の GPU は次の 2 枚です。
+開発環境では、以下の GPU で行いました。
 
 - NVIDIA GeForce RTX 2060 SUPER（推奨。`start_cuda.bat`）
 - AMD Radeon 780M / gfx1103 + ROCm 10（`start_amd.bat`）
 
-この環境の NVIDIA ドライバは 616.92（CUDA 13.4）です。CUDA で動かす場合は `start_cuda.bat` を使います。
+開発環境の NVIDIA ドライバは 616.92（CUDA 13.4）です。CUDA で動かす場合は `start_cuda.bat` を使います。
 
 ## ブランチ運用
 
 | ブランチ | 用途 |
 | --- | --- |
 | `main` | 安定版。現在の固定リリースは **v1.0.0** |
-| `dev` | 今後の機能実装・企画用 |
+| `dev` | 開発中。現在の作業版は **v2.0.0** |
 
 新しい機能は `dev` で進め、安定したら `main` へ取り込み、必要に応じてバージョンタグを付けます。
 
@@ -32,7 +33,7 @@ Version: **1.0.0**
 - Python 3.12 相当
 - Google Chrome
 - GPU を使う場合は、対応する PyTorch（ROCm または CUDA）
-- 声クローン用の参照音声 `voice/sample.wav`、`voice/sample.mp3`、`voice/sample.ogg` など（書き起こし `voice/sample.txt` は無ければ自動作成）
+- 声クローン用の参照音声（wav / mp3 / ogg など。拡張の「声」から登録。書き起こしは無ければ自動作成）
 
 ## ディレクトリの見取り
 
@@ -41,10 +42,10 @@ Version: **1.0.0**
 | `server/` | ローカル TTS サーバー（`python -m server` → `http://127.0.0.1:8000`） |
 | `server/sampling/` | 参照音声の変換と声クローン用プロンプトの作成 |
 | `extension/` | Chrome 拡張（MV3） |
-| `extension/settings.json` | 速度・音量・生成オプション |
+| `extension/settings.json` | 再生速度・音量・ハイライト／チャット自動・生成オプション |
 | `models/OmniVoice` | TTS モデル。無ければ起動時にダウンロード |
-| `models/whisper-large-v3-turbo` | `voice/sample.txt` 自動作成用 |
-| `voice/` | 参照音声・書き起こし・声クローン用プロンプト・確認用 WAV |
+| `models/whisper-large-v3-turbo` | 参照音声の書き起こし用 |
+| `voice/` | 登録した声（元ファイル・wav・txt・プロンプト） |
 | `test/test_client.html` | 拡張を使わないブラウザ単体の試験 UI |
 | `test/test_sentence_split.mjs` | 文分割の確認用 |
 
@@ -80,22 +81,34 @@ python -m pip install -r requirements_amd.txt
 | フォルダ | 用途 |
 | --- | --- |
 | `models/OmniVoice` | TTS。無ければ起動時に `k2-fsa/OmniVoice` をダウンロード |
-| `models/whisper-large-v3-turbo` | `voice/sample.txt` 自動作成用。無ければ書き起こし時にダウンロード |
+| `models/whisper-large-v3-turbo` | 参照音声の書き起こし用。無ければ書き起こし時にダウンロード |
 
-## 3. 声クローン用プロンプト
+## 3. 声クローン
 
-`voice/sample.wav` が無いと、サーバーは起動しません。`voice/sample.mp3` / `voice/sample.ogg` / `voice/sample.oga` / `voice/sample.flac` があれば、起動時に `voice/sample.wav` へ変換します。起動スクリプトも同じ条件です。
+参照音声は操作ウィンドウの「声」からアップロードします。サーバーは声が無くても起動します。読み上げの前に、少なくとも 1 件を登録して選んでください。アップロード中もこのウィンドウは開いたままです。
 
-サーバーは起動時に `voice/voice_clone_prompt.pt` を読み込みます。このファイルが無くて参照音声がある場合、起動スクリプトが自動で作成します。
+以前の `voice/sample.wav` / `sample.txt` / `voice_clone_prompt.pt` は、初回起動時に 1 件の声フォルダへ移します。
 
-手動で作る場合:
+保存先は `voice/{id}/` です。アップロード名 `自分の声.mp3` なら、同じ stem で中間ファイルも残します。
+
+```
+voice/{id}/
+  自分の声.mp3
+  自分の声.wav
+  自分の声.txt
+  自分の声.pt
+```
+
+元が WAV なら変換コピーは作りません。次に同じ声を選んだときは、保存済みの `.pt` を読むだけで書き起こしからやり直しません。消すときは拡張の削除だけです。
+
+手動でプロンプトだけ作り直す場合:
 
 ```powershell
 .\venv_amd\Scripts\Activate.ps1
 python -m server.sampling.build_voice_prompt
 ```
 
-`voice/sample.txt` が無ければ Whisper で書き起こします。WAV / OGG / FLAC は `soundfile`、MP3 は `miniaudio` で読むので ffmpeg は不要です。既にある `voice/sample.txt` は、手修正した内容を優先します。
+書き起こし `{stem}.txt` が無ければ Whisper で作ります。WAV / OGG / FLAC は `soundfile`、MP3 は `miniaudio` で読むので ffmpeg は不要です。既にある txt は手修正を優先します。
 
 ## 4. TTS サーバーの起動
 
@@ -129,10 +142,11 @@ python -m server
 | --- | --- |
 | http://127.0.0.1:8000/ | 稼働確認 |
 | http://127.0.0.1:8000/health | ヘルスチェック |
-| `POST /tts` | 読み上げ。本文は `{"text": "こんにちは。"}` |
+| `POST /tts` | 読み上げ。本文は `{"text": "こんにちは。"}`。声が未選択なら 409 |
 | http://127.0.0.1:8000/tts/defaults | 生成オプションの既定値 |
 | http://127.0.0.1:8000/tts/languages | OmniVoice が受け付ける language 一覧 |
 | http://127.0.0.1:8000/extension/settings | 拡張設定の読み書き |
+| http://127.0.0.1:8000/voices | 声の一覧・追加・選択・削除 |
 
 `POST /tts` で省略できる項目と、サーバー既定値は次のとおりです。
 
@@ -140,6 +154,7 @@ python -m server
 | --- | --- |
 | `instruct` | 空（未指定。下の「instruct の書き方」を参照） |
 | `language` | `auto`（本文から判定。下の「language の選び方」を参照） |
+| `speed` | 1.0（下の「speed の意味」を参照） |
 | `num_step` | 32 |
 | `guidance_scale` | 2.0 |
 | `t_shift` | 0.1 |
@@ -147,13 +162,27 @@ python -m server
 | `class_temperature` | 0.0 |
 | `denoise` | true |
 
-既定値は `server/app.py` の `DEFAULT_*` で変えます。拡張ポップアップの「生成設定」と `test/test_client.html` からも同じ項目を送れます。
+既定値は `server/app.py` の `DEFAULT_*` で変えます。操作ウィンドウの「生成設定」と `test/test_client.html` からも同じ項目を送れます。
+
+操作ウィンドウ上部の「速度」は、生成済み音声の再生速度です。生成時の話す速さは `speed` です。
+
+### speed の意味
+
+`speed` は OmniVoice が音声を作るときの話す速さです。再生用の「速度」スライダーとは別です。
+
+| 値 | 効果 |
+| --- | --- |
+| `1.0` | 既定 |
+| `1` より大きい | 短く、速く話す |
+| `1` より小さい | 長く、遅く話す |
+
+例: `0.8` はゆっくり、`1.2` は速めです。
 
 ### instruct の書き方
 
 `instruct` は自由文ではありません。OmniVoice 0.2.1 が認めるタグだけを、カンマで並べます。空、または未指定なら声クローンだけが使われます。
 
-このプロジェクトは常に `voice/sample.wav` 由来の声クローンを使います。`instruct` を入れると、その声の上に性別・年齢・音高・スタイル・口音／方言の指定が乗ります。リストに無い語（`happy` や「ゆっくりめに」など）は `ValueError` になります。
+このプロジェクトは常に、拡張で選んだ声のクローンを使います。`instruct` を入れると、その声の上に性別・年齢・音高・スタイル・口音／方言の指定が乗ります。リストに無い語（`happy` や「ゆっくりめに」など）は `ValueError` になります。
 
 書き方:
 
@@ -258,7 +287,7 @@ python -m server
 
 ### language の選び方
 
-OmniVoice 0.2.1 は **646 言語** を受け付けます。ポップアップと `test/test_client.html` の language から選べます。検索欄に `ja` や `日本語`、`French` などを入れると絞り込めます。
+OmniVoice 0.2.1 は **646 言語** を受け付けます。操作ウィンドウと `test/test_client.html` の language から選べます。検索欄に `ja` や `日本語`、`French` などを入れると絞り込めます。
 
 特別な値:
 
@@ -300,7 +329,7 @@ OmniVoice 0.2.1 は **646 言語** を受け付けます。ポップアップと
 
 全件は `GET /tts/languages` と `extension/languages.json` にあります。
 
-拡張の速度・音量・生成オプションは `extension/settings.json` に保存します。ポップアップで変えると、サーバーの `PUT /extension/settings` がこのファイルへ書き戻します。サーバー停止中は、拡張内の `settings.json` を読みます。
+拡張の再生速度・音量・ハイライト／チャット自動・生成オプションは `extension/settings.json` に保存します。操作ウィンドウで変えると、サーバーの `PUT /extension/settings` がこのファイルへ書き戻します。サーバー停止中は、拡張内の `settings.json` を読みます。
 
 初回起動はモデル読み込みに時間がかかります。拡張や `test/test_client.html` を使う前に、サーバーを起動しておいてください。
 
@@ -311,13 +340,29 @@ OmniVoice 0.2.1 は **646 言語** を受け付けます。ポップアップと
 3. 「パッケージ化されていない拡張機能を読み込む」
 4. このリポジトリの `extension` フォルダを選ぶ
 
+ツールバーの OmniVoice Web Reader をクリックすると、操作ウィンドウが開きます（ツールバー下の小さなポップアップではありません）。位置は、直前のマウス位置に近いところです。ページをクリックしてもこの窓は閉じません。すでに開いていれば、その窓を前面へ出します。
+
 拡張を更新したあとは、拡張の再読み込みに加えて、読み上げ対象のページも再読み込みしてください。
+
+主なファイル:
+
+| パス | 内容 |
+| --- | --- |
+| `background.js` | service worker（ES module）。読み上げ開始とメッセージ中継 |
+| `extension_settings.js` | `settings.json` の読み書きと、ページへの設定配信 |
+| `reader_window.js` | 操作ウィンドウの位置と開閉 |
+| `popup.js` | 操作ウィンドウ。抽出・再生・生成設定・進捗 |
+| `voices_ui.js` | 操作ウィンドウの声一覧・選択・削除・アップロード |
+| `language_ui.js` | language の検索付き選択。`test/test_client.html` でも使う |
+| `content.js` | 本文・選択テキストの抽出と、ページ上の文ハイライト |
+| `chat_auto.js` | ChatGPT / Gemini の解答完成を監視する |
+| `offscreen.js` | 音声再生用 Offscreen。`playback.js` / `tts.js` / `audio.js` を読む |
 
 ## 6. 使い方
 
 1. サーバーを起動する
 2. 読み上げたいページを開く
-3. ツールバーの OmniVoice Web Reader をクリックする
+3. ツールバーの OmniVoice Web Reader をクリックして操作ウィンドウを開く
 
 | 操作 | 内容 |
 | --- | --- |
@@ -325,12 +370,17 @@ OmniVoice 0.2.1 は **646 言語** を受け付けます。ポップアップと
 | このページを読み上げる | 抽出した本文を順に読み上げる |
 | 選択範囲を読み上げる | ページ上で選択したテキストだけを読み上げる |
 | 一時停止 / 再開 / 停止 | 再生を制御する |
-| 速度 / 音量 | 再生中でも変更できる |
-| 生成設定 | `language` や `num_step` など、サーバーへ送る生成オプション |
+| 速度 / 音量 | 再生側。生成済み音声の再生速度と音量。再生中でも変更できる |
+| 読み上げ中の文をハイライト | ページ上で現在の文を黄色く囲む。既定はオフ |
+| チャットの解答を自動で読む | ChatGPT / Gemini で、オンにしたあとに完成した解答を読む。既定はオフ |
+| 声 | 参照音声のアップロード・選択・削除 |
+| 生成設定 | `language`、`speed`、`num_step` など、サーバーへ送る生成オプション |
 
 ページ上でテキストを選択して右クリックし、「選択テキストを読み上げ」でも同じことができます。
 
-読み上げ中は、現在の文がページ上で黄色くハイライトされ、見える位置までスクロールします。ポップアップを閉じても再生は続きます。
+読み上げ中は、操作ウィンドウに現在の文が出ます。ページ上の黄色いハイライトは、設定でオンにしたときだけです。操作ウィンドウを閉じても再生は続きます。
+
+「チャットの解答を自動で読む」は `chatgpt.com` / `chat.openai.com` / `gemini.google.com` だけです。オンにした時点ですでに画面にあるログは読まず、そのあと完成したアシスタント解答だけを読みます。生成中は待って、テキストが止まってから開始します。コードブロックは除きます。次の解答が完成したら、いま読んでいるものを止めて切り替えます。ハイライト設定とは独立です。
 
 `language` の既定は `auto` です。本文から日本語／英語／中国語／韓国語を判定します。ほかの言語は生成設定の一覧から選びます。
 
@@ -363,8 +413,8 @@ node test/test_sentence_split.mjs
 | --- | --- |
 | サーバー窓 | リクエスト ID、文字数、生成秒数、サンプル数 |
 | Offscreen のコンソール | `[playback]` `[tts]` `[audio]` |
-| service worker のコンソール | 抽出文字数・行数 |
-| ページのコンソール | 抽出とハイライトの成否 |
-| 拡張ポップアップ | 失敗時の「読み上げエラー」 |
+| service worker のコンソール | 抽出文字数・行数（`background.js`） |
+| ページのコンソール | 抽出とハイライトの成否。チャット自動は `chat_auto.js` |
+| 操作ウィンドウ | 失敗時の「読み上げエラー」 |
 
 Offscreen と service worker のコンソールは、`chrome://extensions` の拡張詳細から開けます。

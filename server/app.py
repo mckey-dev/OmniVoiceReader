@@ -5,6 +5,7 @@
 # ================================================================================
 
 import os
+import threading
 import traceback
 
 from server.gpu_runtime import configure_backend_env, print_torch_device, resolve_torch_device
@@ -19,6 +20,7 @@ install_miopen_log_filter()
 
 import io
 import json
+import shutil
 import tempfile
 import time
 
@@ -27,16 +29,28 @@ import soundfile as sf
 
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from omnivoice import OmniVoice, VoiceClonePrompt
+from omnivoice import OmniVoice
 
-from server.sampling.sample_audio import SAMPLE_WAV, ensure_sample_wav
 from server.model_store import ensure_omnivoice_model
-from server.paths import PROJECT_ROOT, VOICE_CLONE_PROMPT
+from server.paths import AUDIO_EXTENSIONS, PROJECT_ROOT
+from server.sampling.prepare_voice import load_voice_prompt, prepare_voice_prompt
+from server.sampling.voice_store import (
+    add_voice,
+    delete_voice,
+    extension_of,
+    find_voice,
+    migrate_legacy_voices,
+    new_voice_id,
+    public_catalog,
+    sanitize_stem,
+    set_active,
+    voice_paths,
+)
 from server.tts_language import (
     DEFAULT_LANGUAGE,
     language_catalog,
@@ -47,16 +61,16 @@ from server.tts_language import (
 
 # 設定
 
-APP_VERSION = "1.0.0"
-PROMPT_FILE = VOICE_CLONE_PROMPT
-SAMPLE_FILE = SAMPLE_WAV
+APP_VERSION = "2.0.0"
 SETTINGS_FILE = os.path.join(PROJECT_ROOT, "extension", "settings.json")
+MAX_VOICE_UPLOAD_BYTES = 20 * 1024 * 1024
 
 HOST = "127.0.0.1"
 PORT = 8000
 
 DEFAULT_NUM_STEP = 32
 DEFAULT_GUIDANCE_SCALE = 2.0
+DEFAULT_SPEED = 1.0
 DEFAULT_T_SHIFT = 0.1
 DEFAULT_POSITION_TEMPERATURE = 5.0
 DEFAULT_CLASS_TEMPERATURE = 0.0
@@ -75,6 +89,7 @@ class TTSRequest(BaseModel):
     instruct: Optional[str] = None
     num_step: Optional[int] = Field(default=None, ge=1)
     guidance_scale: Optional[float] = Field(default=None, ge=0)
+    speed: Optional[float] = Field(default=None, gt=0)
     t_shift: Optional[float] = Field(default=None, ge=0)
     position_temperature: Optional[float] = Field(default=None, ge=0)
     class_temperature: Optional[float] = Field(default=None, ge=0)
@@ -92,6 +107,7 @@ class ExtensionSettings(BaseModel):
     instruct: str = DEFAULT_INSTRUCT
     num_step: int = Field(default=DEFAULT_NUM_STEP, ge=1)
     guidance_scale: float = Field(default=DEFAULT_GUIDANCE_SCALE, ge=0)
+    speed: float = Field(default=DEFAULT_SPEED, gt=0)
     t_shift: float = Field(default=DEFAULT_T_SHIFT, ge=0)
     position_temperature: float = Field(
         default=DEFAULT_POSITION_TEMPERATURE,
@@ -103,6 +119,8 @@ class ExtensionSettings(BaseModel):
     )
     denoise: bool = DEFAULT_DENOISE
     language: str = DEFAULT_LANGUAGE
+    highlightSentence: bool = False
+    autoReadChat: bool = False
 
 
 # ================================================================================
@@ -114,6 +132,7 @@ def default_generation_options():
         "instruct": DEFAULT_INSTRUCT,
         "num_step": DEFAULT_NUM_STEP,
         "guidance_scale": DEFAULT_GUIDANCE_SCALE,
+        "speed": DEFAULT_SPEED,
         "t_shift": DEFAULT_T_SHIFT,
         "position_temperature": DEFAULT_POSITION_TEMPERATURE,
         "class_temperature": DEFAULT_CLASS_TEMPERATURE,
@@ -144,6 +163,11 @@ def resolve_generation_options(request):
             DEFAULT_GUIDANCE_SCALE
             if request.guidance_scale is None
             else request.guidance_scale
+        ),
+        "speed": (
+            DEFAULT_SPEED
+            if request.speed is None
+            else request.speed
         ),
         "t_shift": (
             DEFAULT_T_SHIFT
@@ -255,16 +279,56 @@ def read_extension_settings():
         return default_extension_settings()
 
 
-# ================================================================================
-# require_sample_audio
-# 参照音声が無いときは、モデルを読む前に起動を止める。
-# MP3 / OGG などがあれば sample.wav へ変換する。
-# ================================================================================
-def require_sample_audio():
-    ensure_sample_wav()
+voice_lock = threading.Lock()
+voice_clone_prompt = None
+active_voice_id = None
 
 
-require_sample_audio()
+# ================================================================================
+# apply_voice_prompt
+# メモリ上のクローン用プロンプトを、指定の声へ載せ替える。
+# ================================================================================
+def apply_voice_prompt(voice):
+    global voice_clone_prompt
+    global active_voice_id
+
+    with voice_lock:
+        if voice is None:
+            voice_clone_prompt = None
+            active_voice_id = None
+            return None
+
+        prompt = load_voice_prompt(voice)
+        voice_clone_prompt = prompt
+        active_voice_id = voice.get("id") if prompt is not None else None
+        return prompt
+
+
+# ================================================================================
+# load_startup_voice
+# 保存済みの active 声があればプロンプトを読む。無ければ待受のみ。
+# ================================================================================
+def load_startup_voice():
+    catalog = migrate_legacy_voices()
+    voice = find_voice(catalog, catalog.get("active_id"))
+
+    if voice is None:
+        print()
+        print("声がまだありません。拡張から参照音声を追加してください。")
+        apply_voice_prompt(None)
+        return
+
+    print()
+    print(f"Loading voice clone prompt: {voice.get('name') or voice.get('stem')}")
+
+    prompt_start = time.perf_counter()
+    prompt = apply_voice_prompt(voice)
+
+    if prompt is None:
+        print("プロンプトがありません。拡張から声を選び直すか、追加してください。")
+        return
+
+    print(f"Voice clone prompt loaded in {time.perf_counter() - prompt_start:.4f} sec")
 
 
 device = resolve_torch_device(torch)
@@ -309,23 +373,7 @@ except Exception as error:
 flush_miopen_warnings()
 print(f"Model loaded in {time.perf_counter() - load_start:.2f} sec")
 
-
-# 保存済みの声クローン用プロンプトを読み込む
-
-print()
-print(f"Loading voice clone prompt: {PROMPT_FILE}")
-
-if not os.path.exists(PROMPT_FILE):
-    raise FileNotFoundError(
-        f"Voice clone prompt not found: {PROMPT_FILE}"
-    )
-
-prompt_start = time.perf_counter()
-voice_clone_prompt = VoiceClonePrompt.load(
-    PROMPT_FILE,
-    map_location="cpu",
-)
-print(f"Voice clone prompt loaded in {time.perf_counter() - prompt_start:.4f} sec")
+load_startup_voice()
 
 
 # FastAPI の初期化
@@ -426,6 +474,137 @@ def put_extension_settings(settings: ExtensionSettings):
 
 
 # ================================================================================
+# list_voices
+# 登録済みの声一覧と、今使う声を返す。
+# ================================================================================
+@app.get("/voices")
+def list_voices():
+    catalog = migrate_legacy_voices()
+    return public_catalog(catalog)
+
+
+# ================================================================================
+# create_voice
+# 参照音声を保存し、書き起こしとクローン用プロンプトを作って active にする。
+# ================================================================================
+@app.post("/voices")
+def create_voice(
+    file: UploadFile = File(...),
+    name: Optional[str] = Form(None),
+):
+    migrate_legacy_voices()
+
+    filename = file.filename or "voice.wav"
+    source_ext = extension_of(filename)
+
+    if not source_ext:
+        allowed = ", ".join(AUDIO_EXTENSIONS)
+        raise HTTPException(
+            status_code=400,
+            detail=f"対応していない形式です。{allowed} を指定してください。",
+        )
+
+    payload = file.file.read()
+
+    if not payload:
+        raise HTTPException(
+            status_code=400,
+            detail="ファイルが空です。",
+        )
+
+    if len(payload) > MAX_VOICE_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail="ファイルが大きすぎます（20MB まで）。",
+        )
+
+    stem = sanitize_stem(filename)
+    display_name = (name or "").strip() or stem
+    voice_id = new_voice_id()
+    voice = {
+        "id": voice_id,
+        "name": display_name,
+        "stem": stem,
+        "source_name": os.path.basename(filename),
+        "source_ext": source_ext,
+        "has_prompt": False,
+    }
+    paths = voice_paths(voice)
+    os.makedirs(paths["dir"], exist_ok=True)
+
+    try:
+        with open(paths["source"], "wb") as handle:
+            handle.write(payload)
+
+        print()
+        print(f"Saving voice: {display_name}")
+        prepare_voice_prompt(model, voice)
+        voice["has_prompt"] = True
+        catalog = add_voice(voice, make_active=True)
+    except Exception as error:
+        traceback.print_exc()
+
+        if os.path.isdir(paths["dir"]):
+            shutil.rmtree(paths["dir"], ignore_errors=True)
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"声の準備に失敗しました: {error}",
+        )
+
+    apply_voice_prompt(voice)
+    return public_catalog(catalog)
+
+
+# ================================================================================
+# select_voice
+# 使う声を切り替える。保存済みプロンプトをメモリへ載せる。
+# ================================================================================
+@app.put("/voices/{voice_id}/select")
+def select_voice(voice_id: str):
+    catalog = migrate_legacy_voices()
+    voice = find_voice(catalog, voice_id)
+
+    if voice is None:
+        raise HTTPException(
+            status_code=404,
+            detail="指定した声が見つかりません。",
+        )
+
+    paths = voice_paths(voice)
+
+    if not os.path.isfile(paths["pt"]):
+        raise HTTPException(
+            status_code=409,
+            detail="この声のプロンプトがありません。もう一度アップロードしてください。",
+        )
+
+    voice, catalog = set_active(voice_id)
+    apply_voice_prompt(voice)
+    return public_catalog(catalog)
+
+
+# ================================================================================
+# remove_voice
+# 声とその中間ファイルを削除する。
+# ================================================================================
+@app.delete("/voices/{voice_id}")
+def remove_voice(voice_id: str):
+    catalog = migrate_legacy_voices()
+
+    if find_voice(catalog, voice_id) is None:
+        raise HTTPException(
+            status_code=404,
+            detail="指定した声が見つかりません。",
+        )
+
+    _removed, catalog = delete_voice(voice_id)
+    next_voice = find_voice(catalog, catalog.get("active_id"))
+    apply_voice_prompt(next_voice)
+    return public_catalog(catalog)
+
+
+# ================================================================================
 # tts
 # テキストから音声を生成し、WAV を返す。
 # ================================================================================
@@ -438,6 +617,15 @@ def tts(request: TTSRequest):
         raise HTTPException(
             status_code=400,
             detail="text is empty",
+        )
+
+    with voice_lock:
+        prompt = voice_clone_prompt
+
+    if prompt is None:
+        raise HTTPException(
+            status_code=409,
+            detail="声が選ばれていません。拡張から参照音声を登録してください。",
         )
 
     options = resolve_generation_options(request)
@@ -459,10 +647,11 @@ def tts(request: TTSRequest):
         audio = model.generate(
             text=text,
             language=language,
-            voice_clone_prompt=voice_clone_prompt,
+            voice_clone_prompt=prompt,
             instruct=options["instruct"],
             num_step=options["num_step"],
             guidance_scale=options["guidance_scale"],
+            speed=options["speed"],
             t_shift=options["t_shift"],
             position_temperature=options["position_temperature"],
             class_temperature=options["class_temperature"],
