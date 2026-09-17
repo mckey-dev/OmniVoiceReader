@@ -34,7 +34,7 @@ if [ ! -x "${PYTHON_EXE}" ]; then
     "${PYTHON_EXE}" -m pip install -r requirements.txt
 fi
 
-echo "サーバーを起動します: http://127.0.0.1:8000"
-exec "${PYTHON_EXE}" -m server
+echo "サーバーを起動します"
+exec "${PYTHON_EXE}" -m server "$@"
 
 # ================================================================================

@@ -327,7 +327,7 @@ async function extractArticle() {
 
     await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ["content.js"]
+        files: ["extract_text.js", "content.js"]
     });
 
     const response = await chrome.tabs.sendMessage(tab.id, {

@@ -1,7 +1,7 @@
 # OmniVoice Reader
 
 Version: **v2.0.0**  
-更新日: 2026-09-16
+更新日: 2026-09-18
 
 ローカルの OmniVoice TTS と Chrome 拡張で、Web ページの日本語を読み上げるプロジェクトです。
 
@@ -39,9 +39,13 @@ Version: **v2.0.0**
 
 | パス | 内容 |
 | --- | --- |
-| `server/` | ローカル TTS サーバー（`python -m server` → `http://127.0.0.1:8000`） |
+| `server/` | ローカル TTS サーバー（`python -m server` → 既定 `http://127.0.0.1:8000`） |
+| `server/config.py` | `HOST` / `PORT` と生成既定値 `DEFAULT_*` |
+| `server/app.py` | FastAPI の HTTP ルート |
+| `server/runtime.py` | GPU・モデル・声プロンプトの実行時状態 |
 | `server/sampling/` | 参照音声の変換と声クローン用プロンプトの作成 |
 | `extension/` | Chrome 拡張（MV3） |
+| `extension/sentence.js` | 読み上げ単位への分割 |
 | `extension/settings.json` | 再生速度・音量・ハイライト／チャット自動・生成オプション |
 | `models/OmniVoice` | TTS モデル。無ければ起動時にダウンロード |
 | `models/whisper-large-v3-turbo` | 参照音声の書き起こし用 |
@@ -136,6 +140,15 @@ chmod +x start.sh start_amd.sh start_cuda.sh
 python -m server
 ```
 
+待ち受けは既定で `127.0.0.1:8000` です。`--host` と `--port` で変えられます。起動スクリプトにも同じ引数を渡せます。
+
+```powershell
+python -m server --host 0.0.0.0 --port 8080
+start_cuda.bat --port 8080
+```
+
+Chrome 拡張と `test/test_client.html` は `http://127.0.0.1:8000` 固定です。ポートを変える場合は、そちらも合わせてください。
+
 起動後:
 
 | URL | 内容 |
@@ -162,7 +175,7 @@ python -m server
 | `class_temperature` | 0.0 |
 | `denoise` | true |
 
-既定値は `server/app.py` の `DEFAULT_*` で変えます。操作ウィンドウの「生成設定」と `test/test_client.html` からも同じ項目を送れます。
+既定値は `server/config.py` の `DEFAULT_*` で変えます。操作ウィンドウの「生成設定」と `test/test_client.html` からも同じ項目を送れます。
 
 操作ウィンドウ上部の「速度」は、生成済み音声の再生速度です。生成時の話す速さは `speed` です。
 
@@ -344,20 +357,6 @@ OmniVoice 0.2.1 は **646 言語** を受け付けます。操作ウィンドウ
 
 拡張を更新したあとは、拡張の再読み込みに加えて、読み上げ対象のページも再読み込みしてください。
 
-主なファイル:
-
-| パス | 内容 |
-| --- | --- |
-| `background.js` | service worker（ES module）。読み上げ開始とメッセージ中継 |
-| `extension_settings.js` | `settings.json` の読み書きと、ページへの設定配信 |
-| `reader_window.js` | 操作ウィンドウの位置と開閉 |
-| `popup.js` | 操作ウィンドウ。抽出・再生・生成設定・進捗 |
-| `voices_ui.js` | 操作ウィンドウの声一覧・選択・削除・アップロード |
-| `language_ui.js` | language の検索付き選択。`test/test_client.html` でも使う |
-| `content.js` | 本文・選択テキストの抽出と、ページ上の文ハイライト |
-| `chat_auto.js` | ChatGPT / Gemini の解答完成を監視する |
-| `offscreen.js` | 音声再生用 Offscreen。`playback.js` / `tts.js` / `audio.js` を読む |
-
 ## 6. 使い方
 
 1. サーバーを起動する
@@ -384,12 +383,13 @@ OmniVoice 0.2.1 は **646 言語** を受け付けます。操作ウィンドウ
 
 `language` の既定は `auto` です。本文から日本語／英語／中国語／韓国語を判定します。ほかの言語は生成設定の一覧から選びます。
 
-文の切り方は次の順です。
+文の切り方は `extension/sentence.js` で、次の順です。
 
-1. 改行
-2. `。．！？!?`、または英文の `.` のあと（次が大文字）
-3. それでも長い行は読点
-4. それでも長い行は 120 文字
+1. HTML から取るとき、`<p>` `<div>` `<li>` `<br>` などのブロックの切れ目を改行にする。画面幅での折り返しは改行にしない
+2. その改行1行を1つの読み上げ単位にする
+3. 1行が 120 文字を超えたときだけ、日本語は `。`、英語は `.` の直後で分ける（`.14` のような数字は切らない）
+4. それでも長い塊は 120 文字
+5. 60 文字未満なら、120 を超えない範囲で次の単位を足す。つなぎは半角スペース。最後が短くても前の単位には戻さない
 
 ## 7. ブラウザ単体のテスト UI
 

@@ -65,6 +65,6 @@ if defined REQ_HINT echo %REQ_HINT%
 exit /b 1
 
 :START_SERVER
-echo サーバーを起動します: http://127.0.0.1:8000
-"%PYTHON_EXE%" -m server
+echo サーバーを起動します
+"%PYTHON_EXE%" -m server %*
 exit /b %ERRORLEVEL%

@@ -403,10 +403,12 @@ volumeRange.addEventListener("input", () => {
 
 // ================================================================================
 // splitSentences
-// 句点・感嘆符・疑問符でテキストを文単位に分割する。
+// 改行で分け、120文字を超えた行だけ。または . で切る。
+// 60文字未満なら、120 を超えない範囲で次の単位を足す。
 // ================================================================================
 function splitSentences(text) {
     const maxLength = 120;
+    const minLength = 60;
     const source = String(text || "")
         .replace(/\r\n/g, "\n")
         .replace(/\r/g, "\n")
@@ -415,6 +417,54 @@ function splitSentences(text) {
 
     if (!source) {
         return [];
+    }
+
+    function isEnglishPeriodBreak(line, index) {
+        if (line[index] !== ".") {
+            return false;
+        }
+
+        const next = line[index + 1];
+
+        if (next === undefined) {
+            return true;
+        }
+
+        if (next >= "0" && next <= "9") {
+            return false;
+        }
+
+        return /\s/.test(next);
+    }
+
+    function splitByPeriod(line) {
+        const parts = [];
+        let start = 0;
+
+        for (let index = 0; index < line.length; index += 1) {
+            const character = line[index];
+            const breakHere = character === "。" || isEnglishPeriodBreak(line, index);
+
+            if (!breakHere) {
+                continue;
+            }
+
+            const part = line.slice(start, index + 1).trim();
+
+            if (part) {
+                parts.push(part);
+            }
+
+            start = index + 1;
+        }
+
+        const tail = line.slice(start).trim();
+
+        if (tail) {
+            parts.push(tail);
+        }
+
+        return parts;
     }
 
     function splitByLength(sentence) {
@@ -427,43 +477,18 @@ function splitSentences(text) {
         return chunks;
     }
 
-    function splitLongSentence(sentence) {
-        if (sentence.length <= maxLength) {
-            return [sentence];
+    function splitLongLine(line) {
+        if (line.length <= maxLength) {
+            return [line];
         }
 
-        const pieces = sentence
-            .split(/(?<=[、，,；;：:])/)
-            .map(piece => piece.trim())
-            .filter(piece => piece.length > 0);
+        const parts = splitByPeriod(line);
 
-        if (pieces.length <= 1) {
-            return splitByLength(sentence);
+        if (parts.length <= 1) {
+            return splitByLength(line);
         }
 
-        const merged = [];
-        let buffer = "";
-
-        for (const piece of pieces) {
-            if (!buffer) {
-                buffer = piece;
-                continue;
-            }
-
-            if ((buffer + piece).length <= maxLength) {
-                buffer += piece;
-                continue;
-            }
-
-            merged.push(buffer);
-            buffer = piece;
-        }
-
-        if (buffer) {
-            merged.push(buffer);
-        }
-
-        return merged.flatMap(item => {
+        return parts.flatMap(item => {
             if (item.length <= maxLength) {
                 return [item];
             }
@@ -472,16 +497,39 @@ function splitSentences(text) {
         });
     }
 
-    return source
-        .split(/\n+/)
-        .map(line => line.trim())
-        .filter(line => line.length > 0)
-        .flatMap(line => line
-            .split(/(?<=[。．！？!?])|(?<=\.["'”’)\]]*)\s+(?=[A-Z"“‘(\[])/)
-            .map(part => part.trim())
-            .filter(part => part.length > 0)
-        )
-        .flatMap(splitLongSentence);
+    function mergeShortSentences(sentences) {
+        const merged = [];
+
+        for (const part of sentences) {
+            if (merged.length === 0) {
+                merged.push(part);
+                continue;
+            }
+
+            const previous = merged[merged.length - 1];
+            const combined = previous + " " + part;
+
+            if (
+                previous.length < minLength &&
+                combined.length <= maxLength
+            ) {
+                merged[merged.length - 1] = combined;
+                continue;
+            }
+
+            merged.push(part);
+        }
+
+        return merged;
+    }
+
+    return mergeShortSentences(
+        source
+            .split(/\n+/)
+            .map(line => line.trim())
+            .filter(line => line.length > 0)
+            .flatMap(splitLongLine)
+    );
 }
 
 

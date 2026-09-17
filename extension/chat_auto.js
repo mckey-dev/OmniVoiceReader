@@ -108,7 +108,11 @@
             element.remove();
         });
 
-        return String(clone.innerText || clone.textContent || "")
+        if (window.__omniVoiceExtractText) {
+            return window.__omniVoiceExtractText.fromNode(clone);
+        }
+
+        return String(clone.textContent || "")
             .split("\n")
             .map((line) => line.trim())
             .filter((line) => line.length > 0)

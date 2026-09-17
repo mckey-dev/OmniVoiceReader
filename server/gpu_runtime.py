@@ -171,6 +171,37 @@ def resolve_torch_device(torch_module):
 
 
 # ================================================================================
+# vram_usage_text
+# GPU の使用量と最大量を返す。CUDA / ROCm 以外は None。
+# ================================================================================
+def vram_usage_text(torch_module, device_index=0):
+    cuda = getattr(torch_module, "cuda", None)
+
+    if cuda is None or not cuda.is_available():
+        return None
+
+    try:
+        free_bytes, total_bytes = cuda.mem_get_info(device_index)
+    except (RuntimeError, TypeError, ValueError):
+        return None
+
+    used_gb = (total_bytes - free_bytes) / (1024 ** 3)
+    total_gb = total_bytes / (1024 ** 3)
+    return f"VRAM: {used_gb:.2f} / {total_gb:.2f} GB"
+
+
+# ================================================================================
+# print_vram_usage
+# ターミナルに VRAM 使用量 / 最大量を出す。
+# ================================================================================
+def print_vram_usage(torch_module):
+    text = vram_usage_text(torch_module)
+
+    if text:
+        print(text)
+
+
+# ================================================================================
 # print_torch_device
 # 起動ログに PyTorch とデバイス情報を出す。
 # ================================================================================
@@ -178,6 +209,7 @@ def print_torch_device(torch_module, device):
     print("PyTorch:", torch_module.__version__)
     print("CUDA available:", torch_module.cuda.is_available())
     print("Device:", device["label"])
+    print_vram_usage(torch_module)
 
 
 if __name__ == "__main__":

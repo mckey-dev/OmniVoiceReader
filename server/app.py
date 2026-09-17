@@ -2,43 +2,36 @@
 # app.py
 #
 # OmniVoice をローカル GPU（ROCm / CUDA）または CPU で動かす TTS サーバー。
+# HTTP ルート。モデルと声の実行時状態は runtime が持つ。
 # ================================================================================
 
-import os
-import threading
-import traceback
-
-from server.gpu_runtime import configure_backend_env, print_torch_device, resolve_torch_device
-
-# ROCm の最適化。torch を import する前に設定すること。CUDA では無視される。
-configure_backend_env()
-
-from server.miopen_log import flush_miopen_warnings, install_miopen_log_filter
-
-install_miopen_log_filter()
-
-
 import io
-import json
+import os
 import shutil
-import tempfile
 import time
-
-import torch
-import soundfile as sf
+import traceback
 
 from typing import Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
 
-from omnivoice import OmniVoice
+import soundfile as sf
 
-from server.model_store import ensure_omnivoice_model
-from server.paths import AUDIO_EXTENSIONS, PROJECT_ROOT
-from server.sampling.prepare_voice import load_voice_prompt, prepare_voice_prompt
+from server import runtime
+from server.config import APP_VERSION, MAX_VOICE_UPLOAD_BYTES, SETTINGS_FILE
+from server.extension_settings import (
+    ExtensionSettings,
+    read_extension_settings,
+    settings_to_dict,
+    write_extension_settings,
+)
+from server.generation import TTSRequest, default_generation_options, resolve_generation_options
+from server.miopen_log import flush_miopen_warnings
+from server.paths import AUDIO_EXTENSIONS
+from server.runtime import apply_voice_prompt, load_runtime
+from server.sampling.prepare_voice import prepare_voice_prompt
 from server.sampling.voice_store import (
     add_voice,
     delete_voice,
@@ -51,329 +44,10 @@ from server.sampling.voice_store import (
     set_active,
     voice_paths,
 )
-from server.tts_language import (
-    DEFAULT_LANGUAGE,
-    language_catalog,
-    normalize_language_choice,
-    resolve_tts_language,
-)
+from server.tts_language import language_catalog, resolve_tts_language
 
 
-# 設定
-
-APP_VERSION = "2.0.0"
-SETTINGS_FILE = os.path.join(PROJECT_ROOT, "extension", "settings.json")
-MAX_VOICE_UPLOAD_BYTES = 20 * 1024 * 1024
-
-HOST = "127.0.0.1"
-PORT = 8000
-
-DEFAULT_NUM_STEP = 32
-DEFAULT_GUIDANCE_SCALE = 2.0
-DEFAULT_SPEED = 1.0
-DEFAULT_T_SHIFT = 0.1
-DEFAULT_POSITION_TEMPERATURE = 5.0
-DEFAULT_CLASS_TEMPERATURE = 0.0
-DEFAULT_DENOISE = True
-DEFAULT_INSTRUCT = ""
-
-
-# ================================================================================
-# TTSRequest
-# /tts に送る読み上げテキストと、任意の生成オプションを受け取る。
-# 省略した項目はサーバー既定値を使う。
-# ================================================================================
-class TTSRequest(BaseModel):
-    text: str
-    request_id: Optional[str] = None
-    instruct: Optional[str] = None
-    num_step: Optional[int] = Field(default=None, ge=1)
-    guidance_scale: Optional[float] = Field(default=None, ge=0)
-    speed: Optional[float] = Field(default=None, gt=0)
-    t_shift: Optional[float] = Field(default=None, ge=0)
-    position_temperature: Optional[float] = Field(default=None, ge=0)
-    class_temperature: Optional[float] = Field(default=None, ge=0)
-    denoise: Optional[bool] = None
-    language: Optional[str] = None
-
-
-# ================================================================================
-# ExtensionSettings
-# 拡張の設定ファイル extension/settings.json の形。
-# ================================================================================
-class ExtensionSettings(BaseModel):
-    playbackSpeed: float = Field(default=1.0, ge=0.5, le=2.0)
-    playbackVolume: float = Field(default=1.0, ge=0, le=1)
-    instruct: str = DEFAULT_INSTRUCT
-    num_step: int = Field(default=DEFAULT_NUM_STEP, ge=1)
-    guidance_scale: float = Field(default=DEFAULT_GUIDANCE_SCALE, ge=0)
-    speed: float = Field(default=DEFAULT_SPEED, gt=0)
-    t_shift: float = Field(default=DEFAULT_T_SHIFT, ge=0)
-    position_temperature: float = Field(
-        default=DEFAULT_POSITION_TEMPERATURE,
-        ge=0,
-    )
-    class_temperature: float = Field(
-        default=DEFAULT_CLASS_TEMPERATURE,
-        ge=0,
-    )
-    denoise: bool = DEFAULT_DENOISE
-    language: str = DEFAULT_LANGUAGE
-    highlightSentence: bool = False
-    autoReadChat: bool = False
-
-
-# ================================================================================
-# default_generation_options
-# サーバー側の生成既定値を返す。
-# ================================================================================
-def default_generation_options():
-    return {
-        "instruct": DEFAULT_INSTRUCT,
-        "num_step": DEFAULT_NUM_STEP,
-        "guidance_scale": DEFAULT_GUIDANCE_SCALE,
-        "speed": DEFAULT_SPEED,
-        "t_shift": DEFAULT_T_SHIFT,
-        "position_temperature": DEFAULT_POSITION_TEMPERATURE,
-        "class_temperature": DEFAULT_CLASS_TEMPERATURE,
-        "denoise": DEFAULT_DENOISE,
-        "language": DEFAULT_LANGUAGE,
-    }
-
-
-# ================================================================================
-# resolve_generation_options
-# リクエストの指定値と既定値を合成する。空の instruct は未指定として扱う。
-# ================================================================================
-def resolve_generation_options(request):
-    instruct = (
-        request.instruct.strip()
-        if isinstance(request.instruct, str)
-        else ""
-    )
-
-    return {
-        "instruct": instruct or None,
-        "num_step": (
-            DEFAULT_NUM_STEP
-            if request.num_step is None
-            else request.num_step
-        ),
-        "guidance_scale": (
-            DEFAULT_GUIDANCE_SCALE
-            if request.guidance_scale is None
-            else request.guidance_scale
-        ),
-        "speed": (
-            DEFAULT_SPEED
-            if request.speed is None
-            else request.speed
-        ),
-        "t_shift": (
-            DEFAULT_T_SHIFT
-            if request.t_shift is None
-            else request.t_shift
-        ),
-        "position_temperature": (
-            DEFAULT_POSITION_TEMPERATURE
-            if request.position_temperature is None
-            else request.position_temperature
-        ),
-        "class_temperature": (
-            DEFAULT_CLASS_TEMPERATURE
-            if request.class_temperature is None
-            else request.class_temperature
-        ),
-        "denoise": (
-            DEFAULT_DENOISE
-            if request.denoise is None
-            else request.denoise
-        ),
-        "language": normalize_language_choice(request.language),
-    }
-
-
-# ================================================================================
-# settings_to_dict
-# Pydantic モデルを JSON 用の dict にする。
-# ================================================================================
-def settings_to_dict(model):
-    if hasattr(model, "model_dump"):
-        return model.model_dump()
-
-    return model.dict()
-
-
-# ================================================================================
-# default_extension_settings
-# 拡張設定の既定値を返す。
-# ================================================================================
-def default_extension_settings():
-    return settings_to_dict(ExtensionSettings())
-
-
-# ================================================================================
-# parse_extension_settings
-# 設定 JSON を検証してモデルにする。
-# ================================================================================
-def parse_extension_settings(data):
-    if hasattr(ExtensionSettings, "model_validate"):
-        settings = ExtensionSettings.model_validate(data)
-    else:
-        settings = ExtensionSettings.parse_obj(data)
-
-    payload = settings_to_dict(settings)
-    payload["language"] = normalize_language_choice(payload.get("language"))
-
-    if hasattr(ExtensionSettings, "model_validate"):
-        return ExtensionSettings.model_validate(payload)
-
-    return ExtensionSettings.parse_obj(payload)
-
-
-# ================================================================================
-# write_extension_settings
-# 拡張設定を settings.json に保存する。
-# ================================================================================
-def write_extension_settings(settings):
-    normalized = settings_to_dict(parse_extension_settings(settings))
-    directory = os.path.dirname(SETTINGS_FILE)
-    os.makedirs(directory, exist_ok=True)
-
-    fd, tmp_path = tempfile.mkstemp(
-        prefix="settings.",
-        suffix=".tmp",
-        dir=directory,
-    )
-
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(normalized, handle, ensure_ascii=False, indent=2)
-            handle.write("\n")
-
-        os.replace(tmp_path, SETTINGS_FILE)
-    except Exception:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-
-        raise
-
-    return normalized
-
-
-# ================================================================================
-# read_extension_settings
-# 拡張設定を settings.json から読む。無ければ作成する。
-# ================================================================================
-def read_extension_settings():
-    if not os.path.exists(SETTINGS_FILE):
-        return write_extension_settings(default_extension_settings())
-
-    try:
-        with open(SETTINGS_FILE, encoding="utf-8") as handle:
-            data = json.load(handle)
-
-        return settings_to_dict(parse_extension_settings(data))
-    except Exception as error:
-        print("Failed to read extension settings:", error)
-        return default_extension_settings()
-
-
-voice_lock = threading.Lock()
-voice_clone_prompt = None
-active_voice_id = None
-
-
-# ================================================================================
-# apply_voice_prompt
-# メモリ上のクローン用プロンプトを、指定の声へ載せ替える。
-# ================================================================================
-def apply_voice_prompt(voice):
-    global voice_clone_prompt
-    global active_voice_id
-
-    with voice_lock:
-        if voice is None:
-            voice_clone_prompt = None
-            active_voice_id = None
-            return None
-
-        prompt = load_voice_prompt(voice)
-        voice_clone_prompt = prompt
-        active_voice_id = voice.get("id") if prompt is not None else None
-        return prompt
-
-
-# ================================================================================
-# load_startup_voice
-# 保存済みの active 声があればプロンプトを読む。無ければ待受のみ。
-# ================================================================================
-def load_startup_voice():
-    catalog = migrate_legacy_voices()
-    voice = find_voice(catalog, catalog.get("active_id"))
-
-    if voice is None:
-        print()
-        print("声がまだありません。拡張から参照音声を追加してください。")
-        apply_voice_prompt(None)
-        return
-
-    print()
-    print(f"Loading voice clone prompt: {voice.get('name') or voice.get('stem')}")
-
-    prompt_start = time.perf_counter()
-    prompt = apply_voice_prompt(voice)
-
-    if prompt is None:
-        print("プロンプトがありません。拡張から声を選び直すか、追加してください。")
-        return
-
-    print(f"Voice clone prompt loaded in {time.perf_counter() - prompt_start:.4f} sec")
-
-
-device = resolve_torch_device(torch)
-
-
-# モデルを読み込む
-
-print("=" * 60)
-print(f"OmniVoice Reader Server - {device['label']}")
-print("=" * 60)
-
-print()
-print_torch_device(torch, device)
-
-print()
-print("Loading OmniVoice...")
-
-model_dir = ensure_omnivoice_model()
-print(f"Model path: {model_dir}")
-
-load_start = time.perf_counter()
-
-try:
-    model = OmniVoice.from_pretrained(
-        model_dir,
-        device_map=device["device_map"],
-        dtype=device["dtype"],
-    )
-except Exception as error:
-    print(f"Failed to load OmniVoice: {error}")
-    traceback.print_exc()
-
-    try:
-        with open("server_error.log", "w", encoding="utf-8") as handle:
-            handle.write(f"Failed to load OmniVoice: {error}\n\n")
-            traceback.print_exc(file=handle)
-    except OSError:
-        pass
-
-    raise
-
-flush_miopen_warnings()
-print(f"Model loaded in {time.perf_counter() - load_start:.2f} sec")
-
-load_startup_voice()
+load_runtime()
 
 
 # FastAPI の初期化
@@ -406,7 +80,7 @@ def root():
     return {
         "status": "ok",
         "service": "OmniVoice Local Reader",
-        "device": device["label"],
+        "device": runtime.device["label"],
     }
 
 
@@ -538,7 +212,7 @@ def create_voice(
 
         print()
         print(f"Saving voice: {display_name}")
-        prepare_voice_prompt(model, voice)
+        prepare_voice_prompt(runtime.model, voice)
         voice["has_prompt"] = True
         catalog = add_voice(voice, make_active=True)
     except Exception as error:
@@ -619,8 +293,8 @@ def tts(request: TTSRequest):
             detail="text is empty",
         )
 
-    with voice_lock:
-        prompt = voice_clone_prompt
+    with runtime.voice_lock:
+        prompt = runtime.voice_clone_prompt
 
     if prompt is None:
         raise HTTPException(
@@ -644,7 +318,7 @@ def tts(request: TTSRequest):
     start = time.perf_counter()
 
     try:
-        audio = model.generate(
+        audio = runtime.model.generate(
             text=text,
             language=language,
             voice_clone_prompt=prompt,
@@ -683,13 +357,14 @@ def tts(request: TTSRequest):
         samples = 0
 
     duration = (
-        samples / model.sampling_rate
-        if samples and getattr(model, "sampling_rate", 0)
+        samples / runtime.model.sampling_rate
+        if samples and getattr(runtime.model, "sampling_rate", 0)
         else 0
     )
 
     print(f"Generation finished in {elapsed:.2f} sec")
     print(f"Audio: {samples} samples, {duration:.2f} sec, {channels} ch")
+    runtime.print_vram()
 
     if samples <= 0:
         print("Warning: generated audio is empty")
@@ -701,7 +376,7 @@ def tts(request: TTSRequest):
     sf.write(
         wav_buffer,
         audio[0],
-        model.sampling_rate,
+        runtime.model.sampling_rate,
         format="WAV",
     )
 
@@ -713,29 +388,6 @@ def tts(request: TTSRequest):
         content=wav_data,
         media_type="audio/wav",
     )
-
-
-# サーバーを起動する
-
-# ================================================================================
-# ensure_port_available
-# 待ち受けポートが空いていることを確認する。
-# ================================================================================
-def ensure_port_available(host, port):
-    import socket
-
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-    try:
-        sock.bind((host, port))
-    except OSError:
-        print()
-        print(f"{port} 番ポートは既に使われています。")
-        print("前のサーバーを閉じてから、もう一度起動してください。")
-        print(f"例: netstat -ano | findstr :{port}")
-        raise SystemExit(1)
-    finally:
-        sock.close()
 
 
 # ================================================================================

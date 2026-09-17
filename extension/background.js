@@ -350,7 +350,7 @@ async function startReading(tabId, mode = "page") {
 
     await chrome.scripting.executeScript({
         target: { tabId: tabId },
-        files: ["content.js"]
+        files: ["extract_text.js", "content.js"]
     });
 
     const extractAction = mode === "selection"
@@ -415,7 +415,7 @@ async function startProvidedReading(tabId, text) {
         await setCurrentReadingTabId(tabId);
         await chrome.scripting.executeScript({
             target: { tabId: tabId },
-            files: ["content.js"]
+            files: ["extract_text.js", "content.js"]
         }).catch(() => {});
     }
 

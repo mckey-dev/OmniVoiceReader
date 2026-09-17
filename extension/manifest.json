@@ -26,6 +26,7 @@
         "https://*/*"
       ],
       "js": [
+        "extract_text.js",
         "content.js",
         "chat_auto.js"
       ],

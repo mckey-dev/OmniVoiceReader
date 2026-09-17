@@ -4,7 +4,12 @@
 # 選択中の声のクローン用プロンプトを、手動で作り直す。
 # ================================================================================
 
-from server.gpu_runtime import configure_backend_env, print_torch_device, resolve_torch_device
+from server.gpu_runtime import (
+    configure_backend_env,
+    print_torch_device,
+    print_vram_usage,
+    resolve_torch_device,
+)
 
 configure_backend_env()
 
@@ -67,6 +72,7 @@ def main():
 
     flush_miopen_warnings()
     print(f"Model loaded in {elapsed:.2f} sec")
+    print_vram_usage(torch)
 
     print()
     print(f"Voice: {voice.get('name') or voice.get('stem')}")
@@ -87,6 +93,7 @@ def main():
 
     flush_miopen_warnings()
     print(f"Prompt prepared in {elapsed:.2f} sec")
+    print_vram_usage(torch)
 
 
 if __name__ == "__main__":

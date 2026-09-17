@@ -66,15 +66,11 @@
     }
 
     // ================================================================================
-    // cleanExtractedText
-    // 抽出テキストの空行を除き、行ごとに整える。
+    // extractApi
+    // ブロックと br を改行にする抽出。読み込み順に依存しないよう、都度参照する。
     // ================================================================================
-    function cleanExtractedText(text) {
-        return String(text || "")
-            .split("\n")
-            .map(line => line.trim())
-            .filter(line => line.length > 0)
-            .join("\n");
+    function extractApi() {
+        return window.__omniVoiceExtractText;
     }
 
     // ================================================================================
@@ -184,7 +180,10 @@
             el.remove();
         });
 
-        const text = cleanExtractedText(clone.innerText || clone.textContent || "");
+        const api = extractApi();
+        const text = api
+            ? api.fromNode(clone)
+            : String(clone.textContent || "").trim();
         debugLog("content", "extractText", {
             chars: text.length,
             lines: text ? text.split("\n").length : 0
@@ -203,7 +202,11 @@
             return;
         }
 
-        const rawText = selection.toString();
+        const range = selection.getRangeAt(0);
+        const api = extractApi();
+        const rawText = api
+            ? api.fromRange(range)
+            : selection.toString();
 
         if (!rawText.trim()) {
             return;
@@ -212,7 +215,7 @@
         pageState.lastSelectionText = rawText;
 
         try {
-            pageState.lastSelectionRange = selection.getRangeAt(0).cloneRange();
+            pageState.lastSelectionRange = range.cloneRange();
         } catch (error) {
             pageState.lastSelectionRange = null;
         }
@@ -253,8 +256,11 @@
         let range = null;
 
         if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
-            rawText = selection.toString();
             range = selection.getRangeAt(0);
+            const api = extractApi();
+            rawText = api
+                ? api.fromRange(range)
+                : selection.toString();
         }
 
         if (!rawText.trim()) {
@@ -262,7 +268,10 @@
             range = getSavedSelectionRange();
         }
 
-        const text = cleanExtractedText(rawText);
+        const api = extractApi();
+        const text = api
+            ? api.clean(rawText)
+            : String(rawText || "").trim();
 
         if (!text) {
             return {
